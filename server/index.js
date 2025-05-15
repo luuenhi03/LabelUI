@@ -48,6 +48,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Serve static files from public/avatars for avatar images
+app.use("/avatars", express.static(path.join(__dirname, "public/avatars")));
 
 // MongoDB Connection
 const MONGODB_URI =
@@ -73,7 +75,7 @@ mongoose
   });
 
 // Routes
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", require("./routes/auth"));
 app.use("/api/upload", uploadRoutes);
 
 // Add route to serve images from GridFS - must be before dataset routes

@@ -21,6 +21,10 @@ const userSchema = new mongoose.Schema(
       code: String,
       expiry: Date,
     },
+    avatar: {
+      type: String,
+      default: "",
+    },
   },
   {
     timestamps: true,

@@ -58,7 +58,7 @@ const Signup = () => {
     setIsLoading(true);
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/auth/send-otp",
+        "http://localhost:5000/api/auth/send-otp-register",
         {
           email,
         }
@@ -98,7 +98,7 @@ const Signup = () => {
     setError("");
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/auth/send-otp",
+        "http://localhost:5000/api/auth/send-otp-register",
         {
           email,
         }
@@ -132,7 +132,7 @@ const Signup = () => {
     setError("");
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/auth/verify-otp",
+        "http://localhost:5000/api/auth/verify-otp-register",
         {
           email,
           password,

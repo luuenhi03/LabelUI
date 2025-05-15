@@ -8,6 +8,9 @@ const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 const Otp = require("../models/Otp");
+const multer = require("multer");
+const upload = multer({ dest: "public/avatars/" });
+const authMiddleware = require("../middleware/auth");
 
 const checkDatabaseConnection = () => {
   return mongoose.connection.readyState === 1;
@@ -76,8 +79,8 @@ router.post("/send-otp", async (req, res) => {
     if (!email) return res.status(400).json({ message: "Email là bắt buộc" });
 
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email đã được đăng ký" });
+    if (!existingUser) {
+      return res.status(404).json({ message: "User not found" });
     }
 
     const otp = generateOTP();
@@ -132,6 +135,34 @@ router.post("/send-otp", async (req, res) => {
 
 router.post("/verify-otp", async (req, res) => {
   try {
+    const { email, otp, newPassword } = req.body;
+
+    const otpRecord = await Otp.findOne({ email, code: otp });
+    if (!otpRecord) {
+      return res.status(400).json({ message: "OTP không đúng" });
+    }
+    if (otpRecord.expiry < new Date()) {
+      return res.status(400).json({ message: "OTP đã hết hạn" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    res.status(200).json({ message: "Đổi mật khẩu thành công" });
+  } catch (error) {
+    console.error("Error verifying OTP:", error);
+    res.status(500).json({ message: "Lỗi xác thực OTP" });
+  }
+});
+
+router.post("/verify-otp-register", async (req, res) => {
+  try {
     const { email, password, otp } = req.body;
 
     const otpRecord = await Otp.findOne({ email, code: otp });
@@ -163,6 +194,45 @@ router.post("/verify-otp", async (req, res) => {
   } catch (error) {
     console.error("Error verifying OTP:", error);
     res.status(500).json({ message: "Lỗi xác thực OTP" });
+  }
+});
+
+router.post("/send-otp-register", async (req, res) => {
+  try {
+    if (!checkDatabaseConnection()) {
+      return res.status(500).json({ message: "Database connection error" });
+    }
+
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email là bắt buộc" });
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email đã được đăng ký" });
+    }
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+
+    await Otp.findOneAndUpdate(
+      { email },
+      { code: otp, expiry: otpExpiry },
+      { upsert: true, new: true }
+    );
+
+    try {
+      await sendOtpMail(email, otp);
+      console.log("OTP email sent successfully (register)");
+    } catch (emailError) {
+      return res.status(500).json({
+        message: "Không thể gửi email OTP",
+        error: emailError.message,
+      });
+    }
+
+    res.status(200).json({ message: "OTP đã được gửi" });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi gửi OTP", error: error.message });
   }
 });
 
@@ -203,11 +273,55 @@ router.post("/login", async (req, res) => {
         id: user._id,
         email: user.email,
         isVerified: user.isVerified,
+        avatar: user.avatar,
       },
     });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Lỗi đăng nhập" });
+  }
+});
+
+router.post("/check-password", async (req, res) => {
+  const { email, currentPassword } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "User not found" });
+  const isMatch = await bcrypt.compare(currentPassword, user.password);
+  if (!isMatch)
+    return res.status(400).json({ message: "Mật khẩu hiện tại không đúng" });
+  res.json({ success: true });
+});
+
+router.post("/upload-avatar", upload.single("avatar"), async (req, res) => {
+  console.log("Upload avatar called", req.body, req.file);
+  try {
+    const { email } = req.body;
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const avatarUrl = `/avatars/${req.file.filename}`;
+    const user = await User.findOneAndUpdate(
+      { email },
+      { avatar: avatarUrl },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ message: "Avatar updated", avatar: avatarUrl });
+  } catch (error) {
+    res.status(500).json({ message: "Upload error", error: error.message });
+  }
+});
+
+router.delete("/delete-account/:id", authMiddleware, async (req, res) => {
+  const userIdToDelete = req.params.id;
+  if (req.user._id !== userIdToDelete) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  try {
+    await User.findByIdAndDelete(userIdToDelete);
+    res.status(200).json({ message: "Tài khoản đã được xóa" });
+  } catch (err) {
+    res.status(500).json({ message: "Lỗi xóa tài khoản", error: err.message });
   }
 });
 

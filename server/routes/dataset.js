@@ -8,6 +8,7 @@ const mongoose = require("mongoose");
 const getGFS = require("../gridfs");
 const { GridFsStorage } = require("multer-gridfs-storage");
 const crypto = require("crypto");
+const User = require("../models/User");
 
 const storage = new GridFsStorage({
   url: process.env.MONGODB_URI || "mongodb://localhost:27017/label_db",
@@ -591,5 +592,27 @@ router.get(
     }
   }
 );
+
+router.post("/upload-avatar", upload.single("avatar"), async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const avatarUrl = `/avatars/${req.file.filename}`;
+    const user = await User.findOneAndUpdate(
+      { email },
+      { avatar: avatarUrl },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const updatedUser = { ...user, avatar: avatarUrl };
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+
+    res.json({ message: "Avatar updated", avatar: avatarUrl });
+  } catch (error) {
+    res.status(500).json({ message: "Upload error", error: error.message });
+  }
+});
 
 module.exports = router;

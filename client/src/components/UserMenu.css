@@ -45,3 +45,131 @@
   .user-menu-item.logout {
     color: red;
   }
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Modal content */
+.modal-content {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 24px 24px 24px;
+  min-width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+  text-align: center;
+  position: relative;
+}
+
+/* Buttons */
+.save-btn, .cancel-btn {
+  min-width: 90px;
+  padding: 8px 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  margin: 0 8px;
+  transition: background 0.2s;
+}
+
+.save-btn {
+  background: #1976d2;
+  color: #fff;
+}
+
+.save-btn:hover {
+  background: #1256a3;
+}
+
+.cancel-btn {
+  background: #eee;
+  color: #333;
+}
+
+.cancel-btn:hover {
+  background: #ccc;
+}
+
+.change-password-modal {
+  min-width: 350px;
+  max-width: 400px;
+  text-align: left;
+  padding: 32px 32px 24px 32px;
+}
+
+.modal-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 18px;
+  color: #2d3559;
+  text-align: left;
+}
+
+.form-group {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-size: 15px;
+  margin-bottom: 6px;
+  color: #222;
+  font-weight: 500;
+}
+
+.form-group input {
+  padding: 8px 10px;
+  border: 1px solid #bdbdbd;
+  border-radius: 5px;
+  font-size: 15px;
+  outline: none;
+  background: #fafbfc;
+  transition: border 0.2s;
+}
+
+.form-group input:focus {
+  border: 1.5px solid #1976d2;
+  background: #fff;
+}
+
+.modal-btn-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.save-btn {
+  background: #2d3559;
+  color: #fff;
+  min-width: 120px;
+  font-weight: 500;
+}
+
+.save-btn:hover {
+  background: #1a1f36;
+}
+
+.cancel-btn {
+  background: #eee;
+  color: #333;
+  min-width: 120px;
+  font-weight: 500;
+}
+
+.cancel-btn:hover {
+  background: #ccc;
+}

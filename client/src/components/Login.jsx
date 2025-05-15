@@ -90,6 +90,7 @@ const Login = () => {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onFocus={() => setError("")}
             disabled={isLoading}
             autoComplete="email"
           />
@@ -101,6 +102,7 @@ const Login = () => {
             placeholder="Mật khẩu"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onFocus={() => setError("")}
             disabled={isLoading}
             autoComplete="current-password"
           />
