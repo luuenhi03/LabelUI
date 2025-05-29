@@ -1,0 +1,87 @@
+.sidebar {
+  width: 280px;
+  height: 100vh;
+  background: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  position: fixed;
+  left: 0;
+  top: 0;
+  padding-top: 64px; // Account for the top navbar height
+  overflow-y: auto;
+
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #ffffff;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+
+    h3 {
+      margin: 0;
+      color: #333;
+      font-size: 18px;
+      font-weight: 600;
+    }
+  }
+
+  .sidebar-content {
+    padding: 16px;
+
+    .loading,
+    .error,
+    .empty-state {
+      color: #666;
+      text-align: center;
+      padding: 16px;
+    }
+
+    .error {
+      color: #dc3545;
+    }
+
+    .dataset-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+
+      .dataset-item {
+        margin-bottom: 8px;
+
+        a {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px;
+          text-decoration: none;
+          color: #333;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+
+          &:hover {
+            background-color: #f5f6fa;
+            transform: translateX(4px);
+          }
+
+          .dataset-name {
+            font-weight: 500;
+            flex: 1;
+            margin-right: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .dataset-count {
+            font-size: 12px;
+            color: #666;
+            background: #f0f0f0;
+            padding: 4px 8px;
+            border-radius: 12px;
+            white-space: nowrap;
+          }
+        }
+      }
+    }
+  }
+} 

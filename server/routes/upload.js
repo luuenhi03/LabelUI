@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const Dataset = require("../models/Dataset");
 const Image = require("../models/Image");
+const mongoose = require("mongoose");
 
 // Configure multer for file upload
 const storage = multer.diskStorage({

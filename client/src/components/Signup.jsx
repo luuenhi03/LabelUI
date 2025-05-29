@@ -198,6 +198,7 @@ const Signup = () => {
             onChange={(e) => setPassword(e.target.value)}
             disabled={isLoading}
             autoComplete="new-password"
+            onFocus={() => setError("")}
           />
           <i
             className={`fas ${

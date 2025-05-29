@@ -9,6 +9,8 @@ const getGFS = require("../gridfs");
 const { GridFsStorage } = require("multer-gridfs-storage");
 const crypto = require("crypto");
 const User = require("../models/User");
+const Image = require("../models/Image");
+const jwt = require("jsonwebtoken");
 
 const storage = new GridFsStorage({
   url: process.env.MONGODB_URI || "mongodb://localhost:27017/label_db",
@@ -43,7 +45,7 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
-      return cb(new Error("Chỉ chấp nhận file ảnh!"), false);
+      return cb(new Error("Only image files are accepted!"), false);
     }
     cb(null, true);
   },
@@ -76,8 +78,8 @@ const checkDatasetExists = async (req, res, next) => {
     if (!dataset) {
       console.log("Dataset not found with ID:", req.params.id);
       return res.status(404).json({
-        message: "Không tìm thấy dataset",
-        details: `Dataset với ID ${req.params.id} không tồn tại`,
+        message: "Dataset not found",
+        details: `Dataset with ID ${req.params.id} does not exist`,
       });
     }
 
@@ -92,41 +94,173 @@ const checkDatasetExists = async (req, res, next) => {
   } catch (error) {
     console.error("Error checking dataset:", error);
     res.status(500).json({
-      message: "Lỗi khi kiểm tra dataset",
+      message: "Error checking dataset",
       error: error.message,
     });
   }
 };
 
+// Thêm middleware kiểm tra kết nối
+const checkMongoConnection = async (req, res, next) => {
+  try {
+    const dbState = mongoose.connection.readyState;
+    if (dbState !== 1) {
+      return res.status(500).json({
+        status: "error",
+        message: "MongoDB is not connected",
+        connectionState: dbState,
+      });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Database connection error",
+      error: error.message,
+    });
+  }
+};
+
+router.get("/test-db", checkMongoConnection, async (req, res) => {
+  try {
+    // Kiểm tra kết nối bằng cách thử ping
+    await mongoose.connection.db.admin().ping();
+    console.log("MongoDB ping successful");
+
+    // Thử đọc một dataset
+    const datasetCount = await Dataset.countDocuments();
+    console.log("Total datasets:", datasetCount);
+
+    res.json({
+      status: "success",
+      connection: {
+        state: mongoose.connection.readyState,
+        meaning: {
+          0: "disconnected",
+          1: "connected",
+          2: "connecting",
+          3: "disconnecting",
+        }[mongoose.connection.readyState],
+      },
+      datasets: {
+        count: datasetCount,
+      },
+    });
+  } catch (error) {
+    console.error("Database test failed:", error);
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+      connection: {
+        state: mongoose.connection.readyState,
+      },
+    });
+  }
+});
+
+router.get("/test-connection", checkMongoConnection, async (req, res) => {
+  try {
+    // Thử đọc một dataset
+    const datasetCount = await Dataset.countDocuments();
+    console.log("Total datasets:", datasetCount);
+
+    // Thử tạo một dataset test
+    const testDataset = new Dataset({
+      name: "test_dataset_" + Date.now(),
+      images: [],
+    });
+    await testDataset.save();
+    console.log("Test dataset created:", testDataset._id.toString());
+
+    // Thử cập nhật dataset test
+    const updateResult = await Dataset.findByIdAndUpdate(
+      testDataset._id,
+      {
+        $push: {
+          images: {
+            filename: "test.jpg",
+            _id: new mongoose.Types.ObjectId(),
+          },
+        },
+      },
+      { new: true }
+    );
+    console.log("Test dataset updated:", updateResult._id.toString());
+
+    // Thử xóa dataset test
+    const deleteResult = await Dataset.findByIdAndDelete(testDataset._id);
+    console.log("Test dataset deleted:", deleteResult._id.toString());
+
+    res.json({
+      status: "success",
+      message: "MongoDB connection test successful",
+      details: {
+        connectionState: mongoose.connection.readyState,
+        totalDatasets: datasetCount,
+        testOperations: "All passed",
+        testDatasetId: testDataset._id.toString(),
+      },
+    });
+  } catch (error) {
+    console.error("MongoDB connection test failed:", error);
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+      details: {
+        connectionState: mongoose.connection.readyState,
+        errorType: error.name,
+      },
+    });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
-    const datasets = await Dataset.find();
+    console.log("=== Get Datasets Debug ===");
+    console.log("Query params:", req.query);
+
+    // Tạm thời bỏ yêu cầu userId để test
+    // const userId = req.query.userId;
+    // if (!userId) {
+    //   return res.status(400).json({ message: "UserId là bắt buộc" });
+    // }
+
+    const datasets = await Dataset.find({});
+    console.log("Found datasets:", datasets.length);
+    console.log(
+      "Datasets:",
+      datasets.map((d) => ({ id: d._id, name: d.name }))
+    );
+
     res.json(datasets);
   } catch (error) {
     console.error("Error fetching datasets:", error);
-    res.status(500).json({ message: "Lỗi khi lấy danh sách dataset" });
+    res.status(500).json({ message: "Error fetching datasets" });
   }
 });
 
 router.post("/", async (req, res) => {
   try {
     if (!req.body.name || !req.body.name.trim()) {
-      return res
-        .status(400)
-        .json({ message: "Tên dataset không được để trống" });
+      return res.status(400).json({ message: "Dataset name cannot be empty" });
+    }
+
+    if (!req.body.userId) {
+      return res.status(400).json({ message: "UserId is required" });
     }
 
     const newDataset = new Dataset({
       name: req.body.name.trim(),
+      userId: req.body.userId,
     });
     const savedDataset = await newDataset.save();
     res.json(savedDataset);
   } catch (error) {
-    console.error("Error creating dataset:", error);
+    console.error("Error creating new dataset:", error);
     if (error.code === 11000) {
-      res.status(400).json({ message: "Tên dataset đã tồn tại" });
+      res.status(400).json({ message: "Dataset name already exists" });
     } else {
-      res.status(500).json({ message: "Lỗi khi tạo dataset mới" });
+      res.status(500).json({ message: "Error creating new dataset" });
     }
   }
 });
@@ -134,9 +268,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", checkDatasetExists, async (req, res) => {
   try {
     if (!req.body.name || !req.body.name.trim()) {
-      return res
-        .status(400)
-        .json({ message: "Tên dataset không được để trống" });
+      return res.status(400).json({ message: "Dataset name cannot be empty" });
     }
 
     const dataset = await Dataset.findByIdAndUpdate(
@@ -147,20 +279,20 @@ router.put("/:id", checkDatasetExists, async (req, res) => {
     res.json(dataset);
   } catch (error) {
     console.error("Error updating dataset:", error);
-    res.status(500).json({ message: "Lỗi khi cập nhật dataset" });
+    res.status(500).json({ message: "Error updating dataset" });
   }
 });
 
 router.post("/:id/share", checkDatasetExists, async (req, res) => {
   try {
     if (!req.body.email || !req.body.email.trim()) {
-      return res.status(400).json({ message: "Email không được để trống" });
+      return res.status(400).json({ message: "Email cannot be empty" });
     }
 
-    res.json({ success: true, message: "Đã chia sẻ dataset!" });
+    res.json({ success: true, message: "Dataset shared successfully!" });
   } catch (error) {
     console.error("Error sharing dataset:", error);
-    res.status(500).json({ message: "Lỗi khi chia sẻ dataset" });
+    res.status(500).json({ message: "Error sharing dataset" });
   }
 });
 
@@ -169,48 +301,102 @@ router.post(
   checkDatasetExists,
   upload.array("images"),
   async (req, res) => {
-    console.log("Upload body:", req.body);
+    console.log("=== Upload Debug ===");
+    console.log("Request params:", req.params);
+    console.log("Request files:", req.files?.length || 0, "files");
+    console.log("Request body:", req.body);
+
     try {
       if (!req.files || req.files.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Không có file nào được upload" });
+        console.log("No files uploaded");
+        return res.status(400).json({ message: "No files were uploaded" });
       }
 
-      req.dataset.images = req.dataset.images || [];
+      const dataset = await Dataset.findById(req.params.id);
+      if (!dataset) {
+        console.log("Dataset not found:", req.params.id);
+        return res.status(404).json({ message: "Dataset not found" });
+      }
+
+      console.log("Found dataset:", {
+        id: dataset._id,
+        name: dataset.name,
+        currentImageCount: dataset.images?.length || 0,
+        userId: dataset.userId,
+      });
+
+      // Kiểm tra xem dataset có userId không
+      if (!dataset.userId) {
+        console.log("Dataset missing userId, attempting to get from request");
+        const token = req.headers.authorization?.split(" ")[1];
+        if (token) {
+          try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            dataset.userId = decoded.userId;
+            console.log("Added userId from token:", dataset.userId);
+          } catch (err) {
+            console.error("Error decoding token:", err);
+            return res.status(401).json({ message: "Invalid token" });
+          }
+        } else {
+          return res.status(401).json({ message: "Token not found" });
+        }
+      }
+
+      dataset.images = dataset.images || [];
       const savedImages = [];
 
       for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        console.log(`Processing file ${i + 1}/${req.files.length}:`, {
+          filename: file.filename,
+          originalName: file.originalname,
+          size: file.size,
+          mimetype: file.mimetype,
+        });
+
         const label = Array.isArray(req.body.label)
           ? req.body.label[i]
-          : req.body.label;
+          : req.body.label || "";
+
         let coordinates;
-        if (Array.isArray(req.body.coordinates)) {
-          coordinates =
-            req.body.coordinates[i] && req.body.coordinates[i] !== "undefined"
-              ? JSON.parse(req.body.coordinates[i])
-              : undefined;
-        } else {
-          coordinates =
-            req.body.coordinates && req.body.coordinates !== "undefined"
-              ? JSON.parse(req.body.coordinates)
-              : undefined;
+        try {
+          if (Array.isArray(req.body.coordinates)) {
+            coordinates =
+              req.body.coordinates[i] && req.body.coordinates[i] !== "undefined"
+                ? JSON.parse(req.body.coordinates[i])
+                : undefined;
+          } else {
+            coordinates =
+              req.body.coordinates && req.body.coordinates !== "undefined"
+                ? JSON.parse(req.body.coordinates)
+                : undefined;
+          }
+        } catch (err) {
+          console.error("Error parsing coordinates:", err);
+          coordinates = undefined;
         }
+
         const labeledBy = Array.isArray(req.body.labeledBy)
           ? req.body.labeledBy[i]
-          : req.body.labeledBy;
+          : req.body.labeledBy || "";
 
         let labeledAt;
-        if (Array.isArray(req.body.labeledAt)) {
-          labeledAt =
-            req.body.labeledAt[i] && !isNaN(Date.parse(req.body.labeledAt[i]))
-              ? new Date(req.body.labeledAt[i])
-              : new Date();
-        } else {
-          labeledAt =
-            req.body.labeledAt && !isNaN(Date.parse(req.body.labeledAt))
-              ? new Date(req.body.labeledAt)
-              : new Date();
+        try {
+          if (Array.isArray(req.body.labeledAt)) {
+            labeledAt =
+              req.body.labeledAt[i] && !isNaN(Date.parse(req.body.labeledAt[i]))
+                ? new Date(req.body.labeledAt[i])
+                : new Date();
+          } else {
+            labeledAt =
+              req.body.labeledAt && !isNaN(Date.parse(req.body.labeledAt))
+                ? new Date(req.body.labeledAt)
+                : new Date();
+          }
+        } catch (err) {
+          console.error("Error parsing labeledAt:", err);
+          labeledAt = new Date();
         }
 
         const boundingBox = coordinates
@@ -222,10 +408,9 @@ router.post(
             }
           : undefined;
 
-        const file = req.files[i];
         const imageData = {
           fileId: file.id || file._id,
-          url: `/api/dataset/${file.id || file._id}`,
+          url: `/api/dataset/file/${file.id || file._id}`,
           filename: file.filename,
           originalName: file.metadata?.originalName || file.originalname,
           uploadDate: file.metadata?.uploadDate || new Date(),
@@ -234,33 +419,46 @@ router.post(
           labeledAt,
           coordinates,
           boundingBox,
-          isCropped: true,
+          isCropped: req.body.isCropped === "true",
         };
 
-        req.dataset.images.push(imageData);
+        console.log("Adding image to dataset:", {
+          fileId: imageData.fileId,
+          filename: imageData.filename,
+          label: imageData.label,
+        });
+
+        dataset.images.push(imageData);
         savedImages.push(imageData);
       }
 
-      await req.dataset.save();
-      console.log("Dataset saved with new images:", {
-        datasetId: req.dataset._id,
-        imageCount: req.dataset.images.length,
-        savedImages: savedImages.map((img) => ({
-          filename: img.filename,
-          label: img.label,
-          labeledBy: img.labeledBy,
-        })),
+      // Update imageCount to reflect the total number of images
+      dataset.imageCount = dataset.images.length;
+      console.log("Saving dataset with new images...");
+      await dataset.save();
+      console.log("Dataset saved successfully:", {
+        datasetId: dataset._id,
+        totalImages: dataset.images.length,
+        newImages: savedImages.length,
+        userId: dataset.userId,
       });
 
       res.status(200).json({
-        message: "Upload ảnh thành công",
+        message: "Images uploaded successfully",
         images: savedImages,
       });
     } catch (error) {
       console.error("Error uploading images:", error);
-      res
-        .status(500)
-        .json({ message: "Lỗi khi upload ảnh", error: error.message });
+      console.error("Error details:", {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+      });
+      res.status(500).json({
+        message: "Error uploading images",
+        error: error.message,
+        details: error.stack,
+      });
     }
   }
 );
@@ -269,12 +467,12 @@ router.get("/:id/images", checkDatasetExists, async (req, res) => {
   try {
     const dataset = await Dataset.findById(req.params.id);
     if (!dataset) {
-      return res.status(404).json({ message: "Không tìm thấy dataset" });
+      return res.status(404).json({ message: "Dataset not found" });
     }
     res.json(dataset.images || []);
   } catch (error) {
     console.error("Error fetching images:", error);
-    res.status(500).json({ message: "Lỗi khi lấy danh sách ảnh" });
+    res.status(500).json({ message: "Error fetching image list" });
   }
 });
 
@@ -286,24 +484,40 @@ router.get("/:id/labeled", checkDatasetExists, async (req, res) => {
 
     const dataset = await Dataset.findById(req.params.id);
     if (!dataset) {
-      return res.status(404).json({ message: "Không tìm thấy dataset" });
+      return res.status(404).json({ message: "Dataset not found" });
     }
 
-    const labeledImages = (dataset.images || [])
-      .filter((img) => img.label)
-      .sort((a, b) => new Date(b.labeledAt) - new Date(a.labeledAt));
-    const total = labeledImages.length;
-    const images = labeledImages.slice(skip, skip + limit);
+    // Lọc ảnh đã gán nhãn từ dataset.images
+    const labeledImages = dataset.images.filter(
+      (img) => img.label && img.label.trim() !== ""
+    );
 
-    res.json({
-      images,
+    // Sắp xếp theo thời gian gán nhãn mới nhất
+    labeledImages.sort((a, b) => {
+      const dateA = a.labeledAt ? new Date(a.labeledAt) : new Date(0);
+      const dateB = b.labeledAt ? new Date(b.labeledAt) : new Date(0);
+      return dateB - dateA;
+    });
+
+    // Phân trang
+    const paginatedImages = labeledImages.slice(skip, skip + limit);
+    const total = labeledImages.length;
+
+    console.log("Labeled images found:", {
       total,
       page,
-      totalPages: Math.ceil(total / limit),
+      limit,
+      skip,
+      returnedCount: paginatedImages.length,
+    });
+
+    res.json({
+      images: paginatedImages,
+      total,
     });
   } catch (error) {
     console.error("Error fetching labeled images:", error);
-    res.status(500).json({ message: "Lỗi khi lấy danh sách ảnh đã gán nhãn" });
+    res.status(500).json({ message: "Error fetching labeled image list" });
   }
 });
 
@@ -316,19 +530,19 @@ router.put("/:id/images/:imageId", checkDatasetExists, async (req, res) => {
 
     const { label, labeledBy, boundingBox } = req.body;
     if (!label || !label.trim()) {
-      return res.status(400).json({ message: "Nhãn không được để trống" });
+      return res.status(400).json({ message: "Label cannot be empty" });
     }
 
     const dataset = await Dataset.findById(req.params.id);
     if (!dataset) {
-      return res.status(404).json({ message: "Không tìm thấy dataset" });
+      return res.status(404).json({ message: "Dataset not found" });
     }
 
     const image = dataset.images.find(
       (img) => img._id.toString() === req.params.imageId
     );
     if (!image) {
-      return res.status(404).json({ message: "Không tìm thấy ảnh" });
+      return res.status(404).json({ message: "Image not found" });
     }
 
     image.label = label.trim();
@@ -360,7 +574,7 @@ router.put("/:id/images/:imageId", checkDatasetExists, async (req, res) => {
     res.json(image);
   } catch (error) {
     console.error("Error updating image label:", error);
-    res.status(500).json({ message: "Lỗi khi cập nhật nhãn" });
+    res.status(500).json({ message: "Error updating label" });
   }
 });
 
@@ -421,7 +635,7 @@ router.get("/:id/export", checkDatasetExists, async (req, res) => {
       imageCount: dataset.images?.length || 0,
     });
 
-    const csvRows = ["filename,label,labeledBy,labeledAt,boundingBox"];
+    const csvRows = ["imageUrl,label,labeledBy,labeledAt,boundingBox"];
 
     if (dataset.images && dataset.images.length > 0) {
       dataset.images
@@ -450,8 +664,15 @@ router.get("/:id/export", checkDatasetExists, async (req, res) => {
             }
           }
 
+          let imageUrl = "";
+          if (img.url) {
+            imageUrl = `http://localhost:5000${img.url}`;
+          } else if (img.fileId) {
+            imageUrl = `http://localhost:5000/api/dataset/${img.fileId}`;
+          }
+
           const row = [
-            escapeCsv(img.filename),
+            escapeCsv(imageUrl),
             escapeCsv(img.label || ""),
             escapeCsv(img.labeledBy || ""),
             escapeCsv(img.labeledAt || ""),
@@ -465,7 +686,6 @@ router.get("/:id/export", checkDatasetExists, async (req, res) => {
     const csvContent = csvRows.join("\n");
     console.log("CSV content generated, length:", csvContent.length);
 
-    // Set proper headers for CSV download
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
@@ -477,48 +697,73 @@ router.get("/:id/export", checkDatasetExists, async (req, res) => {
     res.send(csvContent);
   } catch (error) {
     console.error("Error exporting CSV:", error);
-    res.status(500).json({ message: "Lỗi khi xuất file CSV" });
+    res.status(500).json({ message: "Error exporting CSV" });
   }
 });
 
-// Xóa ảnh khỏi dataset
 router.delete("/:id/images/:imageId", checkDatasetExists, async (req, res) => {
   try {
+    console.log("=== Delete Image Debug ===");
+    console.log("Dataset ID:", req.params.id);
+    console.log("Image ID:", req.params.imageId);
+
+    // Find the dataset first
     const dataset = await Dataset.findById(req.params.id);
     if (!dataset) {
-      return res.status(404).json({ message: "Không tìm thấy dataset" });
+      console.log("Dataset not found");
+      return res.status(404).json({ message: "Dataset not found" });
     }
 
+    // Find the image in the dataset
     const imageIndex = dataset.images.findIndex(
       (img) => img._id.toString() === req.params.imageId
     );
+
     if (imageIndex === -1) {
-      return res.status(404).json({ message: "Không tìm thấy ảnh" });
+      console.log("Image not found in dataset");
+      return res.status(404).json({ message: "Image not found in dataset" });
     }
 
-    // Xóa ảnh khỏi dataset
-    dataset.images.splice(imageIndex, 1);
+    // Update only the label information
+    dataset.images[imageIndex].label = "";
+    dataset.images[imageIndex].labeledBy = "";
+    dataset.images[imageIndex].labeledAt = null;
+    dataset.images[imageIndex].labels = [];
+    dataset.images[imageIndex].boundingBox = null;
+
+    // Save the updated dataset
     await dataset.save();
 
-    res.json({ message: "Đã xóa ảnh thành công" });
+    console.log("Image label information deleted successfully");
+    res.json({
+      message: "Image label information deleted successfully",
+      datasetId: req.params.id,
+      imageId: req.params.imageId,
+    });
   } catch (error) {
-    console.error("Error deleting image:", error);
-    res.status(500).json({ message: "Lỗi khi xóa ảnh" });
+    console.error("Error deleting image label:", {
+      error: error.message,
+      stack: error.stack,
+      params: req.params,
+    });
+    res.status(500).json({
+      message: "Error deleting image label",
+      error: error.message,
+    });
   }
 });
 
-// Xóa tất cả datasets (chỉ dùng trong development)
 router.delete("/reset", async (req, res) => {
   try {
     await Dataset.deleteMany({});
-    res.json({ message: "Đã xóa tất cả datasets" });
+    res.json({ message: "All datasets deleted" });
   } catch (error) {
     console.error("Error resetting datasets:", error);
-    res.status(500).json({ message: "Lỗi khi xóa datasets" });
+    res.status(500).json({ message: "Error deleting datasets" });
   }
 });
 
-router.get("/:fileId", async (req, res) => {
+router.get("/file/:fileId", checkMongoConnection, async (req, res) => {
   try {
     const db = mongoose.connection.db;
     const bucket = new mongoose.mongo.GridFSBucket(db, {
@@ -527,24 +772,24 @@ router.get("/:fileId", async (req, res) => {
 
     const fileId = new mongoose.Types.ObjectId(req.params.fileId);
 
-    // Kiểm tra file tồn tại
     const files = await db
       .collection("uploads.files")
       .find({ _id: fileId })
       .toArray();
     if (!files || files.length === 0) {
-      return res.status(404).json({ message: "Không tìm thấy file" });
+      return res.status(404).json({ message: "File not found" });
     }
 
     res.set("Content-Type", files[0].contentType || "application/octet-stream");
     const downloadStream = bucket.openDownloadStream(fileId);
     downloadStream.pipe(res);
   } catch (err) {
-    res.status(500).json({ message: "Lỗi khi lấy ảnh", error: err.message });
+    res
+      .status(500)
+      .json({ message: "Error fetching image", error: err.message });
   }
 });
 
-// Thống kê nhãn cho ảnh trong dataset
 router.get(
   "/:id/images/:imageId/label-stats",
   checkDatasetExists,
@@ -552,15 +797,14 @@ router.get(
     try {
       const dataset = await Dataset.findById(req.params.id);
       if (!dataset) {
-        return res.status(404).json({ message: "Không tìm thấy dataset" });
+        return res.status(404).json({ message: "Dataset not found" });
       }
       const image = dataset.images.find(
         (img) => img._id.toString() === req.params.imageId
       );
       if (!image) {
-        return res.status(404).json({ message: "Không tìm thấy ảnh" });
+        return res.status(404).json({ message: "Image not found" });
       }
-      // Lấy nhãn mới nhất của mỗi người dùng
       const latestLabels = {};
       if (image.labels && Array.isArray(image.labels)) {
         image.labels.forEach((label) => {
@@ -573,14 +817,12 @@ router.get(
           }
         });
       }
-      // Đếm số lượng mỗi nhãn
       const labelCounts = {};
       Object.values(latestLabels).forEach((label) => {
         if (label.label) {
           labelCounts[label.label] = (labelCounts[label.label] || 0) + 1;
         }
       });
-      // Định dạng dữ liệu trả về
       const stats = Object.entries(labelCounts).map(([label, count]) => ({
         label,
         count,
@@ -596,7 +838,13 @@ router.get(
 router.post("/upload-avatar", upload.single("avatar"), async (req, res) => {
   try {
     const { email } = req.body;
-    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    if (!req.file) {
+      return res.status(400).json({ message: "Không có file nào được upload" });
+    }
+
+    if (!req.file.mimetype.startsWith("image/")) {
+      return res.status(400).json({ message: "Chỉ chấp nhận file ảnh" });
+    }
 
     const avatarUrl = `/avatars/${req.file.filename}`;
     const user = await User.findOneAndUpdate(
@@ -604,14 +852,82 @@ router.post("/upload-avatar", upload.single("avatar"), async (req, res) => {
       { avatar: avatarUrl },
       { new: true }
     );
-    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const updatedUser = { ...user, avatar: avatarUrl };
-    localStorage.setItem("user", JSON.stringify(updatedUser));
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy user" });
+    }
 
-    res.json({ message: "Avatar updated", avatar: avatarUrl });
+    res.json({
+      message: "Avatar updated successfully",
+      avatar: avatarUrl,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Upload error", error: error.message });
+    console.error("Error uploading avatar:", error);
+    res.status(500).json({
+      message: "Error uploading avatar",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/:id/stats", async (req, res) => {
+  try {
+    const dataset = await Dataset.findById(req.params.id);
+    if (!dataset) {
+      return res.status(404).json({ message: "Dataset not found" });
+    }
+
+    const total = dataset.images.length;
+    const unlabeled = dataset.images.filter(
+      (img) => !img.label || img.label.trim() === ""
+    ).length;
+    const labeled = total - unlabeled;
+
+    res.json({
+      total,
+      labeled,
+      unlabeled,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Error fetching dataset stats", error: error.message });
+  }
+});
+
+router.get("/:id", checkMongoConnection, async (req, res) => {
+  try {
+    console.log("=== Get Dataset by ID Debug ===");
+    console.log("Dataset ID:", req.params.id);
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.log("Invalid dataset ID format:", req.params.id);
+      return res.status(400).json({
+        message: "Invalid dataset ID format",
+      });
+    }
+
+    const dataset = await Dataset.findById(req.params.id);
+    if (!dataset) {
+      console.log("Dataset not found with ID:", req.params.id);
+      return res.status(404).json({
+        message: "Dataset not found",
+      });
+    }
+
+    console.log("Dataset found:", {
+      id: dataset._id,
+      name: dataset.name,
+      imageCount: dataset.images?.length || 0,
+    });
+
+    res.json(dataset);
+  } catch (error) {
+    console.error("Error fetching dataset:", error);
+    res.status(500).json({
+      message: "Error fetching dataset",
+      error: error.message,
+    });
   }
 });
 

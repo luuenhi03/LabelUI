@@ -305,8 +305,10 @@ input:disabled {
 }
 
 .dataset-list-section {
-  margin-top: 18px;
-  width: 100%;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 .dataset-list {
   list-style: none;
@@ -361,24 +363,25 @@ input:disabled {
 }
 
 .image-upload-container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: Arial, sans-serif;
-}
-
-.dataset-section, .upload-section {
   background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px #0002;
+  padding: 32px 24px;
+  max-width: 800px;
+  min-height: 600px;
+  margin: 40px auto;
+  width: 100%;
+  transition: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-h2 {
-  color: #333;
-  margin-bottom: 20px;
-  font-size: 1.5em;
+.dataset-section {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .create-dataset {
@@ -389,30 +392,24 @@ h2 {
 
 .dataset-input {
   flex: 1;
-  padding: 10px;
+  padding: 8px 12px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 14px;
 }
 
-.create-btn, .upload-btn {
-  padding: 10px 20px;
-  background-color: #4CAF50;
+.create-btn {
+  padding: 8px 16px;
+  background: #4CAF50;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.3s;
-}
-
-.create-btn:hover, .upload-btn:hover {
-  background-color: #45a049;
-}
-
-.create-btn:disabled, .upload-btn:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
+  &:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
 }
 
 .dataset-select {
@@ -431,8 +428,34 @@ h2 {
   text-align: center;
 }
 
+.upload-options {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.upload-option {
+  flex: 1;
+  max-width: 200px;
+}
+
+.upload-label {
+  display: block;
+  padding: 10px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    background: #e0e0e0;
+  }
+}
+
 .file-input {
-  margin-bottom: 15px;
+  display: none;
 }
 
 .selected-files {
@@ -440,23 +463,38 @@ h2 {
   color: #666;
 }
 
+.upload-btn {
+  padding: 10px 20px;
+  background: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  
+  &:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+}
+
 .message {
+  margin-top: 20px;
   padding: 10px;
   border-radius: 4px;
-  margin: 10px 0;
   text-align: center;
-}
-
-.message.success {
-  background-color: #dff0d8;
-  color: #3c763d;
-  border: 1px solid #d6e9c6;
-}
-
-.message.error {
-  background-color: #f2dede;
-  color: #a94442;
-  border: 1px solid #ebccd1;
+  
+  &.success {
+    background-color: #dff0d8;
+    color: #3c763d;
+    border: 1px solid #d6e9c6;
+  }
+  
+  &.error {
+    background-color: #f2dede;
+    color: #a94442;
+    border: 1px solid #ebccd1;
+  }
 }
 
 .loading {
@@ -474,4 +512,21 @@ h2 {
   .dataset-input, .create-btn {
     width: 100%;
   }
+  
+  .upload-options {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .upload-option {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+/* Optional: make sure the parent/main-content is also consistent */
+.main-content {
+  max-width: 800px;
+  margin: 40px auto;
+  width: 100%;
 } 

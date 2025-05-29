@@ -1,3 +1,4 @@
+require("dotenv").config();
 const jwt = require("jsonwebtoken");
 
 const auth = (req, res, next) => {
@@ -7,11 +8,11 @@ const auth = (req, res, next) => {
   }
   const token = authHeader.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, "hQJ2•••••••••••••••••"); // Thay bằng secret key thực tế của bạn
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = { _id: decoded.userId };
     next();
   } catch (err) {
-    res.status(401).json({ message: "Token không hợp lệ" });
+    res.status(401).json({ message: "Invalid token" });
   }
 };
 

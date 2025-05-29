@@ -39,7 +39,7 @@ const CropImage = ({
 
   const onCrop = () => {
     if (!fileName) {
-      alert("Vui lòng nhập nhãn trước khi crop ảnh.");
+      alert("Please enter a label before cropping the image.");
       return;
     }
     const cropper = cropperRef.current?.cropper;
@@ -65,7 +65,7 @@ const CropImage = ({
         setFileName("");
       } catch (error) {
         console.error("Error during cropping:", error);
-        alert("Có lỗi xảy ra khi crop ảnh. Vui lòng thử lại.");
+        alert("An error occurred while cropping the image. Please try again.");
       }
     }
   };
@@ -76,13 +76,13 @@ const CropImage = ({
 
   const handleUploadAll = async () => {
     if (croppedImages.length === 0) {
-      alert("Không có ảnh nào để upload.");
+      alert("There are no images to upload.");
       return;
     }
 
     // Validate dataset ID
     if (!selectedDataset) {
-      alert("Không tìm thấy dataset ID. Vui lòng thử lại.");
+      alert("Dataset ID not found. Please try again.");
       return;
     }
 
@@ -131,12 +131,12 @@ const CropImage = ({
         });
 
         if (uploadError.response?.data?.message) {
-          alert(`Lỗi upload: ${uploadError.response.data.message}`);
+          alert(`Upload error: ${uploadError.response.data.message}`);
         } else if (uploadError.code === "ECONNABORTED") {
-          alert("Lỗi: Server không phản hồi. Vui lòng thử lại sau.");
+          alert("Error: Server is not responding. Please try again later.");
         } else {
           alert(
-            "Có lỗi xảy ra khi upload ảnh. Vui lòng kiểm tra console để biết thêm chi tiết."
+            "An error occurred while uploading the image. Please check the console for more details."
           );
         }
         throw uploadError;
@@ -201,7 +201,7 @@ const CropImage = ({
         response: error.response?.data,
         status: error.response?.status,
       });
-      alert("Có lỗi xảy ra khi upload ảnh. Vui lòng thử lại.");
+      alert("An error occurred while uploading the image. Please try again.");
     } finally {
       setIsUploading(false);
     }
@@ -232,7 +232,7 @@ const CropImage = ({
       <div className="upload-controls">
         <input
           type="text"
-          placeholder="Nhập nhãn..."
+          placeholder="Enter label..."
           value={fileName}
           onChange={(e) => setFileName(e.target.value)}
           onKeyDown={(e) => {
@@ -257,7 +257,7 @@ const CropImage = ({
             <button
               className="delete-button"
               onClick={() => handleDeleteCroppedImage(index)}
-              title="Xóa ảnh"
+              title="Delete image"
               disabled={isUploading}
             >
               ×

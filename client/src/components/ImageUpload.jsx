@@ -11,6 +11,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
   const [editDatasetId, setEditDatasetId] = useState(null);
   const [editDatasetName, setEditDatasetName] = useState("");
   const [shareDatasetId, setShareDatasetId] = useState(null);
@@ -25,12 +26,34 @@ const ImageUpload = ({ onUploadSuccess }) => {
   const fetchDatasets = async () => {
     try {
       setLoading(true);
-      const response = await axios.get("http://localhost:5000/api/dataset");
+      console.log("=== Fetch Datasets Debug ===");
+
+      const storedUser = JSON.parse(localStorage.getItem("user"));
+      console.log("Stored user:", storedUser);
+
+      // Tạm thời bỏ kiểm tra userId để test
+      // if (!storedUser || !storedUser.id) {
+      //   setMessage("Vui lòng đăng nhập để xem danh sách dataset!");
+      //   return;
+      // }
+
+      console.log("Fetching datasets...");
+      const response = await axios.get(
+        `http://localhost:5000/api/dataset`
+        // `http://localhost:5000/api/dataset?userId=${storedUser.id}`
+      );
+
+      console.log("API Response:", response.data);
       setDatasets(response.data);
       setMessage("");
     } catch (error) {
       console.error("Lỗi khi lấy danh sách dataset:", error);
-      setMessage("Không thể tải danh sách dataset. Vui lòng thử lại sau.");
+      console.error("Error details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setMessage("Cannot load dataset list. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -38,22 +61,29 @@ const ImageUpload = ({ onUploadSuccess }) => {
 
   const createDataset = async () => {
     if (!newDatasetName.trim()) {
-      setMessage("Vui lòng nhập tên dataset!");
+      setMessage("Please enter a dataset name!");
       return;
     }
 
     try {
+      const storedUser = JSON.parse(localStorage.getItem("user"));
+      if (!storedUser || !storedUser.id) {
+        setMessage("Please login to create a dataset!");
+        return;
+      }
+
       const response = await axios.post("http://localhost:5000/api/dataset", {
         name: newDatasetName.trim(),
+        userId: storedUser.id,
       });
 
       setDatasets([...datasets, response.data]);
       setSelectedDataset(response.data._id);
       setNewDatasetName("");
-      setMessage("Tạo dataset thành công!");
+      setMessage("Dataset created successfully!");
     } catch (error) {
       console.error("Lỗi khi tạo dataset:", error);
-      setMessage("Không thể tạo dataset. Vui lòng thử lại sau.");
+      setMessage("Cannot create dataset. Please try again later.");
     }
   };
 
@@ -62,46 +92,106 @@ const ImageUpload = ({ onUploadSuccess }) => {
     setImages(files);
   };
 
+  const handleFolderSelect = async (event) => {
+    const files = event.target.files;
+    if (!files.length) return;
+
+    const imageFiles = [];
+    const processFile = (file) => {
+      if (file.type.startsWith("image/")) {
+        imageFiles.push(file);
+      }
+    };
+
+    // Process all files in the folder
+    for (let i = 0; i < files.length; i++) {
+      processFile(files[i]);
+    }
+
+    setImages(imageFiles);
+  };
+
   const uploadImages = async () => {
     if (!selectedDataset) {
-      setMessage("Vui lòng chọn dataset!");
+      setMessage("Please select a dataset!");
       return;
     }
 
     if (images.length === 0) {
-      setMessage("Vui lòng chọn ảnh để upload!");
+      setMessage("Please select images to upload!");
       return;
     }
 
     try {
       setUploading(true);
-      const formData = new FormData();
-      images.forEach((image) => {
-        formData.append("images", image);
-      });
+      setMessage(""); // Clear any previous message immediately
 
-      const response = await axios.post(
-        `http://localhost:5000/api/dataset/${selectedDataset}/upload`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setMessage("Please login to upload images!");
+        return;
+      }
+
+      // Upload in batches of 5 files
+      const batchSize = 5;
+      for (let i = 0; i < images.length; i += batchSize) {
+        const batch = images.slice(i, i + batchSize);
+        const batchFormData = new FormData();
+
+        batch.forEach((image) => {
+          batchFormData.append("images", image);
+        });
+
+        try {
+          console.log(
+            `Uploading batch ${i / batchSize + 1}/${Math.ceil(
+              images.length / batchSize
+            )}`
+          );
+          const response = await axios.post(
+            `http://localhost:5000/api/dataset/${selectedDataset}/upload`,
+            batchFormData,
+            {
+              headers: {
+                "Content-Type": "multipart/form-data",
+                Authorization: `Bearer ${token}`,
+              },
+              timeout: 60000, // 60 seconds timeout
+            }
+          );
+
+          if (response.data.images) {
+            if (onUploadSuccess) {
+              onUploadSuccess(response.data.images);
+            }
+          }
+        } catch (error) {
+          console.error("Error uploading batch:", error);
+          console.error("Error details:", {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+          });
+          throw error;
         }
-      );
+      }
 
-      setMessage(`Upload thành công ${response.data.length} ảnh!`);
+      setMessage(`Successfully uploaded ${images.length} images!`);
+      setTimeout(() => setMessage(""), 3000); // Hide success after 3s
       setImages([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-
-      if (onUploadSuccess) {
-        onUploadSuccess(response.data);
+      if (folderInputRef.current) {
+        folderInputRef.current.value = "";
       }
     } catch (error) {
       console.error("Lỗi khi upload:", error);
-      setMessage("Không thể upload ảnh. Vui lòng thử lại sau.");
+      setMessage(
+        error.response?.data?.message ||
+          error.message ||
+          "Cannot upload images. Please try again later."
+      );
     } finally {
       setUploading(false);
     }
@@ -155,6 +245,11 @@ const ImageUpload = ({ onUploadSuccess }) => {
     }
   };
 
+  const handleDatasetSelect = (e) => {
+    setSelectedDataset(e.target.value);
+    setMessage(""); // Clear message when selecting new dataset
+  };
+
   return (
     <div className="image-upload-container">
       <div className="dataset-section">
@@ -165,7 +260,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
             type="text"
             value={newDatasetName}
             onChange={(e) => setNewDatasetName(e.target.value)}
-            placeholder="Nhập tên dataset mới"
+            placeholder="Enter new dataset name"
             className="dataset-input"
           />
           <button
@@ -173,17 +268,17 @@ const ImageUpload = ({ onUploadSuccess }) => {
             className="create-btn"
             disabled={!newDatasetName.trim()}
           >
-            Tạo Dataset
+            Create Dataset
           </button>
         </div>
 
         <div className="select-dataset">
           <select
             value={selectedDataset}
-            onChange={(e) => setSelectedDataset(e.target.value)}
+            onChange={handleDatasetSelect}
             className="dataset-select"
           >
-            <option value="">Chọn dataset</option>
+            <option value="">Select dataset</option>
             {datasets.map((dataset) => (
               <option key={dataset._id} value={dataset._id}>
                 {dataset.name}
@@ -193,23 +288,45 @@ const ImageUpload = ({ onUploadSuccess }) => {
         </div>
 
         <div className="upload-area">
-          <input
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={handleFileSelect}
-            ref={fileInputRef}
-            className="file-input"
-          />
+          <div className="upload-options">
+            <div className="upload-option">
+              <label className="upload-label">
+                Choose file
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  ref={fileInputRef}
+                  className="file-input"
+                />
+              </label>
+            </div>
+            <div className="upload-option">
+              <label className="upload-label">
+                Choose folder
+                <input
+                  type="file"
+                  webkitdirectory="true"
+                  directory="true"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFolderSelect}
+                  ref={folderInputRef}
+                  className="file-input"
+                />
+              </label>
+            </div>
+          </div>
           <div className="selected-files">
-            {images.length > 0 && <p>Đã chọn {images.length} ảnh</p>}
+            {images.length > 0 && <p>{images.length} images selected</p>}
           </div>
           <button
             onClick={uploadImages}
             disabled={!selectedDataset || images.length === 0 || uploading}
             className="upload-btn"
           >
-            {uploading ? "Đang upload..." : "Upload Ảnh"}
+            {uploading ? "Uploading..." : "Upload Images"}
           </button>
         </div>
       </div>
@@ -217,8 +334,21 @@ const ImageUpload = ({ onUploadSuccess }) => {
       {message && (
         <div
           className={`message ${
-            message.includes("thành công") ? "success" : "error"
+            message.includes("Successfully uploaded") ||
+            message.includes("Dataset created successfully")
+              ? "success"
+              : "error"
           }`}
+          style={
+            message.includes("Successfully uploaded") ||
+            message.includes("Dataset created successfully")
+              ? {
+                  background: "#d4edda",
+                  color: "#155724",
+                  border: "1px solid #c3e6cb",
+                }
+              : {}
+          }
         >
           {message}
         </div>

@@ -10,6 +10,9 @@ import {
 import { imageDb } from "../firebase/firebaseConfig";
 import { v4 as uuidv4 } from "uuid";
 import "./CropComponent.css";
+import { NavLink } from "react-router-dom";
+import UserMenu from "./UserMenu";
+import "./TopNavBar.scss";
 
 export default function CropComponent({
   imageUrl,

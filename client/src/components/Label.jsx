@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import axios from "axios";
 import { RiDeleteBinLine, RiCloseLine } from "react-icons/ri";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import "./Label.scss";
 import CropImage from "./CropImage";
 import {
@@ -36,6 +36,8 @@ const ImageLabelPieChart = ({
   showNoStatsMessage = true,
 }) => {
   const [data, setData] = useState([]);
+  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
+
   useEffect(() => {
     if (!datasetId || !imageId) return;
     fetch(
@@ -64,7 +66,8 @@ const ImageLabelPieChart = ({
       });
   }, [datasetId, imageId]);
 
-  if (!data.length && showNoStatsMessage) return <div>Chưa có thống kê</div>;
+  if (!data.length && showNoStatsMessage)
+    return <div>No statistics available</div>;
   if (!data.length) return null;
 
   return (
@@ -124,6 +127,10 @@ const Label = forwardRef((props, sref) => {
   const [message, setMessage] = useState("");
   const [selectedDatasetName, setSelectedDatasetName] = useState("");
   const navigate = useNavigate();
+  const params = useParams();
+  const location = useLocation();
+  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
+  const [imageIdFromUrl, setImageIdFromUrl] = useState(null);
 
   const { user, uploadComponent } = props;
 
@@ -140,23 +147,50 @@ const Label = forwardRef((props, sref) => {
   }));
 
   useEffect(() => {
-    const savedDataset = localStorage.getItem("selectedDataset");
-    if (savedDataset) {
-      setSelectedDataset(savedDataset);
+    // Ưu tiên lấy datasetId từ URL (params hoặc query)
+    let urlDatasetId = params.id;
+    if (!urlDatasetId) {
+      const searchParams = new URLSearchParams(location.search);
+      urlDatasetId = searchParams.get("dataset");
+    }
+    if (urlDatasetId) {
+      setSelectedDataset(urlDatasetId);
+      localStorage.setItem("selectedDataset", urlDatasetId);
+    } else {
+      const savedDataset = localStorage.getItem("selectedDataset");
+      if (savedDataset) setSelectedDataset(savedDataset);
     }
     fetchDatasets();
-  }, []);
+  }, [params.id, location.search]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const imageId = searchParams.get("image");
+    setImageIdFromUrl(imageId);
+  }, [location.search]);
 
   useEffect(() => {
     if (selectedDataset) {
       loadImageList();
       loadLabeledImages(0);
     }
-  }, [selectedDataset]);
+    // eslint-disable-next-line
+  }, [selectedDataset, imageIdFromUrl]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "ArrowLeft") {
+        handlePrevImage();
+      } else if (e.key === "ArrowRight") {
+        handleNextImage();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentIndex, imageList]);
 
   const loadImageList = async () => {
     if (!selectedDataset) {
-      console.log("No dataset selected");
       setImageList([]);
       setImageUrl("");
       setSelectedImage(null);
@@ -164,26 +198,38 @@ const Label = forwardRef((props, sref) => {
       return;
     }
     try {
-      console.log("Loading images for dataset:", selectedDataset);
       const response = await axios.get(
         `http://localhost:5000/api/dataset/${selectedDataset}/images`
       );
-      console.log("API Response:", response.data);
-
-      // Không lọc ảnh chưa có nhãn nữa, hiển thị toàn bộ ảnh
       setImageList(response.data);
       setTotalImages(response.data.length);
 
+      // Thêm log kiểm tra
+      console.log("Selected dataset:", selectedDataset);
+      console.log("Image list from API:", response.data);
+      console.log("imageIdFromUrl:", imageIdFromUrl);
+
       if (response.data.length > 0) {
-        await loadImage(response.data[0], 0);
+        if (imageIdFromUrl) {
+          const foundIndex = response.data.findIndex(
+            (img) => img._id === imageIdFromUrl
+          );
+          if (foundIndex !== -1) {
+            await loadImage(response.data[foundIndex], foundIndex);
+          } else {
+            await loadImage(response.data[0], 0);
+          }
+        } else {
+          await loadImage(response.data[0], 0);
+        }
       } else {
         setImageUrl("");
         setSelectedImage(null);
-        setMessage("Không còn ảnh nào trong dataset này.");
+        setMessage("");
       }
     } catch (error) {
       console.error("Error loading image list:", error);
-      setMessage("Lỗi khi tải danh sách ảnh: " + error.message);
+      setMessage("Error loading image list: " + error.message);
     }
   };
 
@@ -201,16 +247,11 @@ const Label = forwardRef((props, sref) => {
       // Create URL for image from fileId
       let imageUrl;
       if (image.fileId) {
-        imageUrl = `http://localhost:5000/api/dataset/${image.fileId}`;
-      } else if (image.url) {
-        imageUrl = image.url.startsWith("http")
-          ? image.url
-          : `http://localhost:5000${image.url}`;
+        imageUrl = `http://localhost:5000/api/dataset/file/${image.fileId}`;
+      } else if (image.url && image.url.startsWith("/api/dataset/file/")) {
+        imageUrl = `http://localhost:5000${image.url}`;
       } else {
-        console.error("Image has no valid URL or fileId:", image);
-        setImageUrl("");
-        setSelectedImage(null);
-        return;
+        imageUrl = "https://via.placeholder.com/300x300?text=No+Image";
       }
 
       console.log("Generated image URL:", imageUrl);
@@ -237,7 +278,7 @@ const Label = forwardRef((props, sref) => {
       setTimeout(() => inputRef.current?.focus(), 100);
     } catch (error) {
       console.error("Error loading image:", error);
-      setMessage("Lỗi khi tải ảnh: " + error.message);
+      setMessage("Error loading image: " + error.message);
       setImageUrl("");
       setSelectedImage(null);
     }
@@ -257,67 +298,88 @@ const Label = forwardRef((props, sref) => {
 
   const handleSaveLabel = async () => {
     if (!selectedImage || !label.trim()) {
-      console.log("No label or image selected.");
-      setMessage("Vui lòng nhập nhãn!");
+      setMessage("Please enter a label!");
       return;
     }
 
     if (!selectedDataset) {
-      console.log("No dataset selected");
-      setMessage("Vui lòng chọn dataset trước!");
+      setMessage("Please select a dataset first!");
       return;
     }
 
     // Validate dataset ID format
     if (!/^[0-9a-fA-F]{24}$/.test(selectedDataset)) {
-      console.error("Invalid dataset ID format:", selectedDataset);
-      setMessage("Dataset ID không hợp lệ!");
+      setMessage("Invalid Dataset ID!");
       return;
     }
 
     // Always get email from localStorage
     const storedUser = JSON.parse(localStorage.getItem("user"));
-    const email = storedUser?.email || "";
+    const email = storedUser?.email;
+    if (!email) {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      navigate("/login");
+      return;
+    }
 
     try {
-      console.log("=== Save Label Debug ===");
-      console.log("Dataset ID:", selectedDataset);
-      console.log("Selected image:", selectedImage);
-      console.log("Label:", label.trim());
-      console.log("Image URL:", imageUrl);
-
-      // Get bounding box coordinates if image was cropped
-      let boundingBox = null;
-      if (selectedImage.coordinates) {
-        boundingBox = {
-          topLeft: selectedImage.coordinates.topLeft,
-          bottomRight: selectedImage.coordinates.bottomRight,
-        };
-      }
-
       // Save the label
       const response = await axios.put(
         `http://localhost:5000/api/dataset/${selectedDataset}/images/${selectedImage._id}`,
         {
           label: label.trim(),
           labeledBy: email,
-          boundingBox: boundingBox,
+          boundingBox: selectedImage.coordinates
+            ? {
+                topLeft: selectedImage.coordinates.topLeft,
+                bottomRight: selectedImage.coordinates.bottomRight,
+              }
+            : null,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          validateStatus: () => true, // To always receive response, even on error
         }
       );
 
-      console.log("Label saved successfully:", response.data);
+      // If authentication is lost, redirect to login
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        navigate("/login");
+        return;
+      }
+
+      if (response.status !== 200) {
+        setMessage("Error saving label. Please try again!");
+        setTimeout(() => setMessage(""), 3000);
+        return;
+      }
 
       // Add the newly labeled image to the latest labeled images
-      setLatestLabeled((prev) =>
-        [
-          {
-            ...response.data,
-            url: imageUrl,
-            filename: selectedImage.filename,
-          },
-          ...prev,
-        ].slice(0, 6)
-      );
+      setLatestLabeled((prev) => {
+        // Nếu ảnh đã có trong latestLabeled thì cập nhật lại, nếu chưa có thì thêm mới vào đầu mảng
+        const exists = prev.some((img) => img._id === selectedImage._id);
+        const newLabeled = {
+          ...selectedImage,
+          label: label.trim(),
+          labeledBy: storedUser.email,
+          labeledAt: new Date().toISOString(),
+          fileId: selectedImage.fileId,
+          url: selectedImage.url,
+        };
+        if (exists) {
+          return [
+            newLabeled,
+            ...prev.filter((img) => img._id !== selectedImage._id),
+          ];
+        } else {
+          return [newLabeled, ...prev];
+        }
+      });
 
       setLabel("");
       setImageInfo({
@@ -325,8 +387,18 @@ const Label = forwardRef((props, sref) => {
         labeledBy: response.data.labeledBy,
         status: "labeled",
       });
+      setSelectedImage((prev) =>
+        prev
+          ? {
+              ...prev,
+              label: response.data.label,
+              labeledBy: response.data.labeledBy,
+              labeledAt: response.data.labeledAt,
+            }
+          : prev
+      );
 
-      // Cập nhật label cho ảnh hiện tại trong imageList
+      // Update label for current image in imageList
       const updatedImageList = imageList.map((img, idx) =>
         idx === currentIndex
           ? {
@@ -339,15 +411,16 @@ const Label = forwardRef((props, sref) => {
       );
       setImageList(updatedImageList);
 
-      // Chuyển sang ảnh tiếp theo nếu có, nếu không thì giữ nguyên
+      // Move to next image if available, otherwise stay on current image
       if (currentIndex < imageList.length - 1) {
         loadImage(updatedImageList[currentIndex + 1], currentIndex + 1);
       } else {
-        setMessage("Đã gán nhãn tất cả ảnh trong dataset.");
+        setMessage("All images in dataset have been labeled.");
       }
 
-      // Sau khi lưu nhãn, cập nhật lại phần Ảnh đã gán nhãn
+      // After saving label, update the Labeled Images section
       await loadLabeledImages(0);
+      setStatsRefreshKey((k) => k + 1);
 
       setTimeout(() => setMessage(""), 3000);
     } catch (error) {
@@ -357,14 +430,14 @@ const Label = forwardRef((props, sref) => {
         response: error.response?.data,
         status: error.response?.status,
       });
-      setMessage("Lỗi khi lưu nhãn. Vui lòng thử lại!");
+      setMessage("Error saving label. Please try again!");
       setTimeout(() => setMessage(""), 3000);
     }
   };
 
   const handleSaveRecentLabel = async (imageId, newLabel) => {
     if (!selectedDataset || !newLabel.trim()) {
-      setMessage("Vui lòng nhập nhãn và chọn dataset!");
+      setMessage("Please enter a label and select a dataset!");
       return;
     }
 
@@ -390,11 +463,11 @@ const Label = forwardRef((props, sref) => {
         )
       );
 
-      setMessage("Đã cập nhật nhãn thành công!");
+      setMessage("Label updated successfully!");
       setTimeout(() => setMessage(""), 3000);
     } catch (error) {
       console.error("Error updating label:", error);
-      setMessage("Lỗi khi cập nhật nhãn. Vui lòng thử lại!");
+      setMessage("Error updating label. Please try again!");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -417,7 +490,7 @@ const Label = forwardRef((props, sref) => {
       setPageIndex(page);
     } catch (error) {
       console.error("Error loading labeled images:", error);
-      setMessage("Lỗi khi tải ảnh đã gán nhãn!");
+      setMessage("Error loading labeled images!");
       setLatestLabeled([]);
       setAllLabeledImages(0);
     }
@@ -425,35 +498,28 @@ const Label = forwardRef((props, sref) => {
 
   const handleDeleteImageFromDataset = async (imageId) => {
     if (!selectedDataset) {
-      alert("Vui lòng chọn dataset trước!");
+      alert("Please select a dataset first!");
       return;
     }
     try {
-      await axios.delete(
+      const response = await axios.delete(
         `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}`
       );
-      setImageList((prevList) => {
-        const newList = prevList.filter((image) => image._id !== imageId);
-        // Tìm index ảnh hiện tại
-        const deletedIndex = prevList.findIndex((img) => img._id === imageId);
-        // Nếu còn ảnh, chuyển sang ảnh tiếp theo hoặc trước đó
-        if (newList.length > 0) {
-          const nextIndex = Math.min(deletedIndex, newList.length - 1);
-          setCurrentIndex(nextIndex);
-          loadImage(newList[nextIndex], nextIndex);
-        } else {
-          setSelectedImage(null);
-          setImageUrl("");
-        }
-        setTotalImages(newList.length);
-        return newList;
-      });
-      setLatestLabeled((prev) => prev.filter((img) => img._id !== imageId));
-      setMessage("Đã xóa ảnh khỏi dataset!");
-      setTimeout(() => setMessage(""), 3000);
+
+      if (response.status === 200) {
+        // Reload the image list to get the updated state from server
+        await loadImageList();
+        // Reload labeled images to update the labeled images section
+        await loadLabeledImages(0);
+        // Update statistics
+        setStatsRefreshKey((k) => k + 1);
+
+        setMessage("Image label information deleted successfully!");
+        setTimeout(() => setMessage(""), 3000);
+      }
     } catch (error) {
-      console.error("Error deleting image from dataset:", error);
-      setMessage("Lỗi khi xóa ảnh khỏi dataset. Vui lòng thử lại!");
+      console.error("Error deleting image label:", error);
+      setMessage("Error deleting image label. Please try again!");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -480,11 +546,11 @@ const Label = forwardRef((props, sref) => {
     // Validate dataset ID format
     if (!/^[0-9a-fA-F]{24}$/.test(datasetId)) {
       console.error("Invalid dataset ID format:", datasetId);
-      setMessage("Dataset ID không hợp lệ!");
+      setMessage("Invalid Dataset ID!");
       return;
     }
     setSelectedDataset(datasetId);
-    // Lưu tên dataset được chọn
+    // Save selected dataset name
     const selectedDataset = datasets.find((d) => d._id === datasetId);
     if (selectedDataset) {
       setSelectedDatasetName(selectedDataset.name);
@@ -498,13 +564,13 @@ const Label = forwardRef((props, sref) => {
       setDatasets(response.data);
     } catch (error) {
       console.error("Error fetching datasets:", error);
-      setMessage("Lỗi khi tải danh sách dataset!");
+      setMessage("Error fetching datasets!");
     }
   };
 
   const handleStopLabeling = async () => {
     if (!selectedDataset) {
-      alert("Vui lòng chọn dataset trước khi tải file CSV!");
+      alert("Please select a dataset before exporting CSV!");
       return;
     }
 
@@ -522,11 +588,11 @@ const Label = forwardRef((props, sref) => {
       link.click();
       link.remove();
 
-      setMessage("Đã tải xuống file CSV thành công!");
+      setMessage("CSV exported successfully!");
       setTimeout(() => setMessage(""), 3000);
     } catch (error) {
       console.error("Error exporting CSV:", error);
-      setMessage("Có lỗi xảy ra khi tạo file CSV. Vui lòng thử lại!");
+      setMessage("Error exporting CSV. Please try again!");
     }
   };
 
@@ -548,7 +614,7 @@ const Label = forwardRef((props, sref) => {
   // Hàm xóa nhãn (reset label) cho ảnh đã gán nhãn
   const handleResetLabel = async (imageId) => {
     if (!selectedDataset) {
-      alert("Vui lòng chọn dataset trước!");
+      alert("Please select a dataset first!");
       return;
     }
     try {
@@ -560,13 +626,13 @@ const Label = forwardRef((props, sref) => {
           labeledAt: null,
         }
       );
-      // Cập nhật lại latestLabeled (ẩn ảnh vừa reset nhãn)
+      // Update latestLabeled (hide the reset image)
       setLatestLabeled((prev) => prev.filter((img) => img._id !== imageId));
-      setMessage("Đã xóa nhãn thành công!");
+      setMessage("Label reset successfully!");
       setTimeout(() => setMessage(""), 3000);
     } catch (error) {
       console.error("Error resetting label:", error);
-      setMessage("Lỗi khi xóa nhãn. Vui lòng thử lại!");
+      setMessage("Error resetting label. Please try again!");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -575,9 +641,9 @@ const Label = forwardRef((props, sref) => {
   const handleHideFromMainList = (imageId) => {
     setImageList((prevList) => {
       const newList = prevList.filter((image) => image._id !== imageId);
-      // Tìm index ảnh hiện tại
+      // Find index of current image
       const deletedIndex = prevList.findIndex((img) => img._id === imageId);
-      // Nếu còn ảnh, chuyển sang ảnh tiếp theo hoặc trước đó
+      // If there are images left, move to next or previous image
       if (newList.length > 0) {
         const nextIndex = Math.min(deletedIndex, newList.length - 1);
         setCurrentIndex(nextIndex);
@@ -589,39 +655,22 @@ const Label = forwardRef((props, sref) => {
       setTotalImages(newList.length);
       return newList;
     });
-    setMessage("Đã ẩn ảnh khỏi danh sách chính!");
+    setMessage("Image hidden from main list!");
     setTimeout(() => setMessage(""), 3000);
   };
 
+  console.log("latestLabeled", latestLabeled);
+
   return (
     <div className="label-container">
-      {/* Header mới */}
-      <div
-        style={{
-          width: "100%",
-          height: 56,
-          background: "#1976d2",
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 24px",
-          boxSizing: "border-box",
-          position: "sticky",
-          top: 0,
-          zIndex: 1000,
-        }}
-      >
-        <div style={{ fontWeight: 600, fontSize: 20, letterSpacing: 1 }}>
-          LabelUI
-        </div>
-        <UserMenu user={storedUser} onLogout={handleLogout} />
-      </div>
       <div className="main-content">
         <div className="label-section">
-          {React.cloneElement(uploadComponent, {
-            onUploadSuccess: loadImageList,
-          })}
+          {/* Upload component if exists */}
+          {uploadComponent
+            ? React.cloneElement(uploadComponent, {
+                onUploadSuccess: loadImageList,
+              })
+            : null}
           <div className="label-header">
             <h1>Label Image</h1>
             <div className="dataset-selector-container">
@@ -630,27 +679,19 @@ const Label = forwardRef((props, sref) => {
                 value={selectedDataset}
                 onChange={handleDatasetChange}
               >
-                <option value="">Chọn dataset...</option>
+                <option value="">Select dataset...</option>
                 {datasets.map((dataset) => (
                   <option key={dataset._id} value={dataset._id}>
                     {dataset.name}
                   </option>
                 ))}
               </select>
-              <button
-                className="select-dataset-btn"
-                onClick={() => navigate(`/dataset/${selectedDataset}/stats`)}
-                disabled={!selectedDataset}
-                style={{ marginLeft: 8 }}
-              >
-                Thống kê
-              </button>
             </div>
           </div>
           {message && <div className="message">{message}</div>}
           {!selectedDataset ? (
             <div className="no-dataset-message">
-              Vui lòng chọn một dataset để bắt đầu gán nhãn
+              Please select a dataset to start labeling
             </div>
           ) : imageUrl && !showCrop ? (
             <>
@@ -696,7 +737,7 @@ const Label = forwardRef((props, sref) => {
                       className="export-csv-button"
                       disabled={!selectedDataset}
                     >
-                      Xuất CSV
+                      Export CSV
                     </button>
                   </div>
                 </div>
@@ -709,9 +750,10 @@ const Label = forwardRef((props, sref) => {
                         marginBottom: 8,
                       }}
                     >
-                      Thống kê nhãn của ảnh này
+                      Label statistics for this image
                     </div>
                     <ImageLabelPieChart
+                      key={selectedImage?._id + "-" + statsRefreshKey}
                       imageId={selectedImage._id}
                       datasetId={selectedDataset}
                       showNoStatsMessage={true}
@@ -723,7 +765,7 @@ const Label = forwardRef((props, sref) => {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Nhập nhãn..."
+                  placeholder="Enter label..."
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
@@ -735,7 +777,7 @@ const Label = forwardRef((props, sref) => {
                   }
                 >
                   <RiDeleteBinLine size={18} />
-                  <span>Xóa</span>
+                  <span>Delete</span>
                 </button>
               </div>
             </>
@@ -752,16 +794,16 @@ const Label = forwardRef((props, sref) => {
                 try {
                   setShowCrop(false);
 
-                  // Cập nhật lại danh sách ảnh và ảnh đã gán nhãn từ backend
+                  // Update imageList and latestLabeled from backend
                   await loadImageList();
                   await loadLabeledImages(0);
 
-                  // Reset các state liên quan nếu cần
-                  setMessage("Đã xử lý ảnh crop thành công!");
+                  // Reset related states if needed
+                  setMessage("Image processing completed successfully!");
                   setTimeout(() => setMessage(""), 3000);
                 } catch (error) {
                   console.error("Error in onUploadComplete:", error);
-                  setMessage("Có lỗi xảy ra khi xử lý ảnh. Vui lòng thử lại.");
+                  setMessage("Error processing image. Please try again.");
                 }
               }}
               onExit={() => setShowCrop(false)}
@@ -769,8 +811,8 @@ const Label = forwardRef((props, sref) => {
           ) : (
             <div className="no-image-message">
               {imageList.length === 0
-                ? "Không còn ảnh nào cần gán nhãn"
-                : "Đang tải ảnh..."}
+                ? "No images left to label"
+                : "Loading images..."}
             </div>
           )}
         </div>
@@ -778,11 +820,12 @@ const Label = forwardRef((props, sref) => {
 
       {/* Recent Labeled */}
       <div className="recent-labels">
-        <h2>Ảnh đã gán nhãn</h2>
+        <h2>Labeled Images</h2>
         <div className="recent-images">
           {latestLabeled.map((img, index) => (
             <div key={index} className="recent-item">
               <div className="image-container">
+                {console.log("img in latestLabeled:", img)}
                 <img
                   src={
                     img.url
@@ -790,8 +833,8 @@ const Label = forwardRef((props, sref) => {
                         ? img.url
                         : `http://localhost:5000${img.url}`
                       : img.fileId
-                      ? `http://localhost:5000/api/dataset/${img.fileId}`
-                      : `http://localhost:5000/uploads/${img.filename}`
+                      ? `http://localhost:5000/api/dataset/file/${img.fileId}`
+                      : `https://via.placeholder.com/200x120?text=No+Image`
                   }
                   alt={`Labeled ${index}`}
                   className="recent-image"
@@ -826,7 +869,7 @@ const Label = forwardRef((props, sref) => {
                     className="save-button"
                     onClick={() => handleSaveRecentLabel(img._id, img.label)}
                   >
-                    Lưu
+                    Save
                   </button>
                   <button
                     className="delete-icon-button"
@@ -843,7 +886,7 @@ const Label = forwardRef((props, sref) => {
           <button onClick={handlePrevPage} disabled={pageIndex === 0}>
             {"<"} Prev
           </button>
-          <span>Trang {pageIndex + 1}</span>
+          <span>Page {pageIndex + 1}</span>
           <button
             onClick={handleNextPage}
             disabled={(pageIndex + 1) * 6 >= allLabeledImages}

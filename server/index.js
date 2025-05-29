@@ -9,6 +9,7 @@ const authRoutes = require("./routes/auth");
 const uploadRoutes = require("./routes/upload");
 const datasetRoutes = require("./routes/dataset");
 const Grid = require("gridfs-stream");
+// const labeledImageRoutes = require("./routes/labeledImage");
 
 const app = express();
 const server = http.createServer(app);
@@ -43,7 +44,7 @@ wss.on("connection", (ws) => {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from uploads directory
@@ -53,13 +54,16 @@ app.use("/avatars", express.static(path.join(__dirname, "public/avatars")));
 
 // MongoDB Connection
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/auth_db";
+  process.env.MONGODB_URI || "mongodb://localhost:27017/label_db";
 console.log("Connecting to MongoDB:", MONGODB_URI);
 
 let gfs;
 
 mongoose
-  .connect(MONGODB_URI)
+  .connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
   .then(() => {
     console.log("Successfully connected to MongoDB");
     gfs = Grid(mongoose.connection.db, mongoose.mongo);
@@ -123,6 +127,7 @@ app.get("/api/dataset/image/:fileId", async (req, res) => {
 });
 
 app.use("/api/dataset", datasetRoutes);
+// app.use("/api/labeled-images", labeledImageRoutes);
 
 // 404 handler
 app.use((req, res) => {

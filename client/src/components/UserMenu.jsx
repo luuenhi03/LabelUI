@@ -71,30 +71,33 @@ const UserMenu = ({ user, onLogout }) => {
   };
 
   const handleSaveImage = async () => {
-    const formData = new FormData();
-    formData.append("avatar", previewImage.file);
-    formData.append("email", user.email);
+    try {
+      const formData = new FormData();
+      formData.append("avatar", previewImage.file);
+      formData.append("email", user.email);
 
-    const res = await fetch("/api/auth/upload-avatar", {
-      method: "POST",
-      body: formData,
-    });
+      const res = await fetch("/api/auth/upload-avatar", {
+        method: "POST",
+        body: formData,
+      });
 
-    if (!res.ok) {
+      if (!res.ok) {
+        setError("Có lỗi xảy ra khi upload ảnh. Vui lòng thử lại sau.");
+        return;
+      }
+
+      const data = await res.json();
+      const updatedUser = { ...user, avatar: data.avatar };
+      setAvatar(data.avatar);
+      user.avatar = data.avatar;
+      setShowModal(false);
+      setPreviewImage(null);
+      setOpen(false);
+      setSuccess("Ảnh đã được cập nhật thành công!");
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+    } catch (error) {
       setError("Có lỗi xảy ra khi upload ảnh. Vui lòng thử lại sau.");
-      return;
     }
-
-    const data = await res.json();
-    // Update both local state and parent component's user object
-    const updatedUser = { ...user, avatar: data.avatar };
-    setAvatar(data.avatar);
-    user.avatar = data.avatar;
-    setShowModal(false);
-    setPreviewImage(null);
-    setOpen(false);
-    setSuccess("Ảnh đã được cập nhật thành công!");
-    localStorage.setItem("user", JSON.stringify(updatedUser));
   };
 
   const handleChangePassword = async () => {
@@ -215,7 +218,7 @@ const UserMenu = ({ user, onLogout }) => {
             <b>{user.email}</b>
           </div>
           <div className="user-menu-item" onClick={handleChangeAvatarClick}>
-            Đổi ảnh
+            Change avatar
           </div>
           <input
             type="file"
@@ -228,24 +231,23 @@ const UserMenu = ({ user, onLogout }) => {
             className="user-menu-item"
             onClick={() => setShowChangePassword(true)}
           >
-            Đổi mật khẩu
+            Change password
           </div>
-          <div className="user-menu-item">Lịch sử</div>
           <div
             className="user-menu-item"
             onClick={() => setShowDeleteModal(true)}
           >
-            Xóa tài khoản
+            Delete account
           </div>
           <div className="user-menu-item logout" onClick={onLogout}>
-            Đăng xuất
+            Logout
           </div>
         </div>
       )}
       {showModal && previewImage && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Thay đổi ảnh</h3>
+            <h3>Change avatar</h3>
             <img
               src={previewImage.url}
               alt="preview"
@@ -266,10 +268,10 @@ const UserMenu = ({ user, onLogout }) => {
               }}
             >
               <button onClick={handleSaveImage} className="save-btn">
-                Lưu
+                Save
               </button>
               <button onClick={handleModalClose} className="cancel-btn">
-                Hủy bỏ
+                Cancel
               </button>
             </div>
           </div>
@@ -278,31 +280,40 @@ const UserMenu = ({ user, onLogout }) => {
       {showChangePassword && (
         <div className="modal-overlay">
           <div className="modal-content change-password-modal">
-            <h3 className="modal-title">Đổi mật khẩu</h3>
+            <h3 className="modal-title">Change Password</h3>
             {step === 1 ? (
               <>
                 <div className="form-group">
-                  <label>Mật khẩu cũ</label>
+                  <label>Current Password</label>
                   <input
                     type="password"
                     value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    onChange={(e) => {
+                      setCurrentPassword(e.target.value);
+                      setError("");
+                    }}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Mật khẩu mới</label>
+                  <label>New Password</label>
                   <input
                     type="password"
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      setError("");
+                    }}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Xác nhận lại mật khẩu</label>
+                  <label>Confirm New Password</label>
                   <input
                     type="password"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      setError("");
+                    }}
                   />
                 </div>
                 {error && (
@@ -310,7 +321,7 @@ const UserMenu = ({ user, onLogout }) => {
                 )}
                 <div className="modal-btn-row">
                   <button onClick={handleChangePassword} className="save-btn">
-                    Đồng ý
+                    Confirm
                   </button>
                   <button
                     onClick={() => {
@@ -324,14 +335,14 @@ const UserMenu = ({ user, onLogout }) => {
                     }}
                     className="cancel-btn"
                   >
-                    Hủy bỏ
+                    Cancel
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <div className="form-group">
-                  <label>Nhập mã OTP</label>
+                  <label>Enter OTP</label>
                   <input
                     type="text"
                     value={otp}
@@ -346,7 +357,7 @@ const UserMenu = ({ user, onLogout }) => {
                 )}
                 <div className="modal-btn-row">
                   <button onClick={handleVerifyOtp} className="save-btn">
-                    Xác nhận OTP
+                    Confirm OTP
                   </button>
                   <button
                     onClick={() => {
@@ -361,7 +372,7 @@ const UserMenu = ({ user, onLogout }) => {
                     }}
                     className="cancel-btn"
                   >
-                    Hủy bỏ
+                    Cancel
                   </button>
                 </div>
               </>

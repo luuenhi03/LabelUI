@@ -1,188 +1,145 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import axios from "../utils/axios";
+import { useParams, useNavigate } from "react-router-dom";
+import "./DatasetStats.scss";
 
-const COLORS = [
-  "#1976d2",
-  "#ff9800",
-  "#43a047",
-  "#d32f2f",
-  "#8e24aa",
-  "#00bcd4",
-];
-
-const crown = "👑";
-const warning = "⚠️";
-
-const DatasetStats = ({ datasetId }) => {
-  const [stats, setStats] = useState({
-    totalImages: 0,
-    labeledImages: 0,
-    labelDistribution: [],
-    userDistribution: [],
-    userLabelDistribution: [],
-  });
+const DatasetStats = () => {
+  const { id } = useParams();
   const navigate = useNavigate();
+  const [dataset, setDataset] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [labeled, setLabeled] = useState(0);
+  const [unlabeled, setUnlabeled] = useState(0);
+  const [consistentImages, setConsistentImages] = useState([]);
+  const [inconsistentImages, setInconsistentImages] = useState([]);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await axios.get(
-          `http://localhost:5000/api/dataset/${datasetId}/stats`
-        );
-        setStats(response.data);
-      } catch (error) {
-        console.error("Error fetching dataset stats:", error);
+        setLoading(true);
+        setError(null);
+        console.log("Fetching dataset with ID:", id);
+        const res = await axios.get(`/api/dataset/${id}`);
+        console.log("Dataset response:", res.data);
+        const ds = res.data;
+        setDataset(ds);
+
+        // Calculate basic stats
+        const totalImages = ds.images ? ds.images.length : 0;
+        const labeledImages = ds.images
+          ? ds.images.filter((img) => img.label && img.label.trim() !== "")
+              .length
+          : 0;
+        setTotal(totalImages);
+        setLabeled(labeledImages);
+        setUnlabeled(totalImages - labeledImages);
+
+        // Group images by label consistency
+        const consistent = [];
+        const inconsistent = [];
+
+        ds.images.forEach((img) => {
+          if (!img.labels || img.labels.length === 0) return;
+
+          // Get unique labels
+          const uniqueLabels = new Set(img.labels.map((l) => l.label));
+
+          if (uniqueLabels.size === 1) {
+            // All labels are the same
+            consistent.push(img);
+          } else {
+            // Multiple different labels
+            inconsistent.push(img);
+          }
+        });
+
+        setConsistentImages(consistent);
+        setInconsistentImages(inconsistent);
+      } catch (err) {
+        console.error("Error fetching dataset stats:", err);
+        console.error("Error details:", {
+          message: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
+          config: err.config,
+        });
+        setError("Failed to load dataset stats");
+      } finally {
+        setLoading(false);
       }
     };
-    if (datasetId) fetchStats();
-  }, [datasetId]);
+    fetchStats();
+  }, [id]);
 
-  const maxCount = Math.max(...stats.labelDistribution.map((l) => l.count), 0);
-  const minCount = Math.min(
-    ...stats.labelDistribution.map((l) => l.count),
-    Infinity
-  );
+  const handleImageClick = (imageId) => {
+    navigate(`/label?dataset=${id}&image=${imageId}`);
+  };
+
+  if (loading) return <div className="dataset-stats-loading">Loading...</div>;
+  if (error) return <div className="dataset-stats-error">{error}</div>;
+  if (!dataset) return null;
 
   return (
-    <div
-      className="dataset-stats"
-      style={{
-        maxWidth: 600,
-        margin: "40px auto",
-        background: "#fff",
-        borderRadius: 16,
-        boxShadow: "0 2px 16px #0001",
-        padding: 32,
-      }}
-    >
-      <button
-        className="exit-stats-btn"
-        style={{
-          marginBottom: 24,
-          float: "right",
-          background: "#f5f5f5",
-          border: "none",
-          borderRadius: 6,
-          padding: "8px 18px",
-          fontWeight: 600,
-          cursor: "pointer",
-        }}
-        onClick={() => navigate("/")}
-      >
-        Thoát
-      </button>
-      <h2
-        style={{
-          textAlign: "center",
-          fontSize: 28,
-          color: "#1976d2",
-          marginBottom: 32,
-          letterSpacing: 1,
-        }}
-      >
-        Tổng số ảnh theo từng nhãn
-      </h2>
-      <div
-        className="chart-container"
-        style={{
-          background: "#f8fafc",
-          borderRadius: 12,
-          padding: 24,
-          marginBottom: 32,
-        }}
-      >
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={stats.labelDistribution}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="label"
-              label={{
-                value: "Nhãn",
-                position: "insideBottom",
-                offset: -5,
-                fontWeight: 600,
-              }}
-              style={{ fontWeight: 600 }}
-            />
-            <YAxis
-              label={{
-                value: "Số lượng ảnh",
-                angle: -90,
-                position: "insideLeft",
-                fontWeight: 600,
-              }}
-              style={{ fontWeight: 600 }}
-            />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="count" name="Số lượng" radius={[8, 8, 0, 0]}>
-              {stats.labelDistribution.map((entry, idx) => (
-                <Cell key={entry.label} fill={COLORS[idx % COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {stats.labelDistribution.length > 0 && (
-        <div
-          style={{
-            background: "#f5f7fa",
-            borderRadius: 10,
-            padding: 20,
-            marginTop: 8,
-            fontSize: 16,
-            boxShadow: "0 1px 4px #0001",
-          }}
-        >
-          <b style={{ fontSize: 17 }}>Nhận xét nhanh:</b>
-          <ul style={{ marginTop: 10, marginBottom: 0, paddingLeft: 22 }}>
-            {stats.labelDistribution.map((item, idx) => (
-              <li
-                key={item.label}
-                style={{
-                  fontWeight:
-                    item.count === maxCount
-                      ? "bold"
-                      : item.count === minCount
-                      ? "bold"
-                      : "normal",
-                  color:
-                    item.count === maxCount
-                      ? "#1976d2"
-                      : item.count === minCount
-                      ? "#d32f2f"
-                      : "#333",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                {item.count === maxCount && <span>{crown}</span>}
-                {item.count === minCount && <span>{warning}</span>}
-                Nhãn <b>{item.label}</b> có <b>{item.count}</b> ảnh
-                {item.count === maxCount
-                  ? " (nhiều nhất)"
-                  : item.count === minCount
-                  ? " (ít nhất)"
-                  : ""}
-                .
-              </li>
-            ))}
-          </ul>
+    <div className="dataset-stats-detail-container">
+      <h1 className="dataset-title">{dataset.name}</h1>
+      <div className="stats-box-row">
+        <div className="stats-box small">
+          <div className="stats-label">Unlabeled images</div>
+          <div className="stats-value">{unlabeled}</div>
         </div>
-      )}
+        <div className="stats-box large">
+          <div className="stats-label">Total images</div>
+          <div className="stats-value">{total}</div>
+        </div>
+        <div className="stats-box small">
+          <div className="stats-label">Labeled images</div>
+          <div className="stats-value">{labeled}</div>
+        </div>
+      </div>
+
+      {/* Consistent Images Section */}
+      <div className="image-group-section">
+        <h2>100% Consistent Images ({consistentImages.length})</h2>
+        <div className="image-list">
+          {consistentImages.map((img) => (
+            <div
+              key={img._id}
+              className="image-list-item"
+              onClick={() => handleImageClick(img._id)}
+            >
+              <div className="image-info">
+                <span className="image-filename">{img.filename}</span>
+                <span className="image-label">{img.label}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Inconsistent Images Section */}
+      <div className="image-group-section">
+        <h2>Inconsistent Labeled Images ({inconsistentImages.length})</h2>
+        <div className="image-list">
+          {inconsistentImages.map((img) => (
+            <div
+              key={img._id}
+              className="image-list-item"
+              onClick={() => handleImageClick(img._id)}
+            >
+              <div className="image-info">
+                <span className="image-filename">{img.filename}</span>
+                <div className="image-labels">
+                  {Array.from(new Set(img.labels.map((l) => l.label))).join(
+                    ", "
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
