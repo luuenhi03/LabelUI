@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const DatasetPage = () => {
   const [datasets, setDatasets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchDatasets = async () => {
@@ -84,6 +85,7 @@ const DatasetPage = () => {
           {datasets.map((ds) => (
             <div
               key={ds._id}
+              className="dataset-card-hover"
               style={{
                 background: "#fff",
                 borderRadius: 10,
@@ -93,6 +95,13 @@ const DatasetPage = () => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
+                cursor: "pointer",
+                transition: "box-shadow 0.2s, transform 0.2s",
+              }}
+              onClick={() => navigate(`/dataset/${ds._id}/stats`)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") navigate(`/dataset/${ds._id}/stats`);
               }}
             >
               <div>
@@ -103,21 +112,17 @@ const DatasetPage = () => {
                   {ds.images ? ds.images.length : 0} images
                 </div>
               </div>
-              <Link
-                to={`/dataset/${ds._id}/stats`}
-                style={{
-                  color: "#1976d2",
-                  fontSize: 18,
-                  fontWeight: 500,
-                  textDecoration: "none",
-                }}
-              >
-                Details
-              </Link>
             </div>
           ))}
         </div>
       )}
+      <style>{`
+        .dataset-card-hover:hover, .dataset-card-hover:focus {
+          box-shadow: 0 8px 28px 0 rgba(25, 118, 210, 0.18);
+          transform: translateY(-2px) scale(1.02);
+          outline: none;
+        }
+      `}</style>
     </div>
   );
 };

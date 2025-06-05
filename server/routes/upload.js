@@ -6,29 +6,35 @@ const fs = require("fs");
 const Dataset = require("../models/Dataset");
 const Image = require("../models/Image");
 const mongoose = require("mongoose");
+const Grid = require("gridfs-stream");
+const { MongoClient } = require("mongodb");
+const { GridFsStorage } = require("multer-gridfs-storage");
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const datasetName = req.body.datasetName;
-    const uploadPath = path.join(__dirname, "../uploads", datasetName);
-
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
+const storage = new GridFsStorage({
+  url: mongoURI,
+  file: (req, file) => {
+    if (req.body.isAvatar === "true") {
+      return {
+        filename: Date.now() + "-avatar-" + file.originalname,
+        bucketName: "uploads",
+        metadata: {
+          isAvatar: true,
+          userId: req.body.userId,
+        },
+      };
     }
-
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + "-" + file.originalname);
+    return {
+      filename: Date.now() + "-" + file.originalname,
+      bucketName: "uploads",
+      metadata: {
+        datasetName: req.body.datasetName,
+      },
+    };
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-// Get all datasets
 router.get("/datasets", async (req, res) => {
   try {
     const datasets = await Dataset.find().sort({ createdAt: -1 });
@@ -38,24 +44,20 @@ router.get("/datasets", async (req, res) => {
   }
 });
 
-// Create new dataset
 router.post("/datasets", async (req, res) => {
   try {
     const { name } = req.body;
 
-    // Check if dataset already exists
     const existingDataset = await Dataset.findOne({ name });
     if (existingDataset) {
       return res.status(400).json({ message: "Dataset already exists" });
     }
 
-    // Create upload directory for the dataset
-    const uploadPath = path.join(__dirname, "../uploads", name);
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
+    // const uploadPath = path.join(__dirname, "../uploads", name);
+    // if (!fs.existsSync(uploadPath)) {
+    //   fs.mkdirSync(uploadPath, { recursive: true });
+    // }
 
-    // Create dataset in database
     const dataset = new Dataset({ name });
     await dataset.save();
 
@@ -65,7 +67,6 @@ router.post("/datasets", async (req, res) => {
   }
 });
 
-// Get images by dataset
 router.get("/images/:datasetId", async (req, res) => {
   try {
     const dataset = await Dataset.findById(req.params.datasetId);
@@ -82,7 +83,6 @@ router.get("/images/:datasetId", async (req, res) => {
   }
 });
 
-// Get labeled images by dataset
 router.get("/labeled/:datasetId", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 0;
@@ -108,7 +108,6 @@ router.get("/labeled/:datasetId", async (req, res) => {
   }
 });
 
-// Update image label
 router.put("/images/:imageId", async (req, res) => {
   try {
     const { label, labeledBy } = req.body;
@@ -126,7 +125,6 @@ router.put("/images/:imageId", async (req, res) => {
   }
 });
 
-// Delete image
 router.delete("/images/:imageId", async (req, res) => {
   try {
     const image = await Image.findById(req.params.imageId);
@@ -134,13 +132,11 @@ router.delete("/images/:imageId", async (req, res) => {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    // Delete file from filesystem
     const filePath = path.join(__dirname, "..", image.path);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
-    // Delete from database
     await Image.findByIdAndDelete(req.params.imageId);
     res.json({ message: "Image deleted successfully" });
   } catch (error) {
@@ -148,54 +144,40 @@ router.delete("/images/:imageId", async (req, res) => {
   }
 });
 
-// Upload images
-router.post("/upload", upload.array("images"), async (req, res) => {
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     const { datasetName } = req.body;
 
-    // Find or create dataset
     let dataset = await Dataset.findOne({ name: datasetName });
     if (!dataset) {
       dataset = new Dataset({ name: datasetName });
       await dataset.save();
     }
 
-    // Save image information to database
-    const images = req.files.map((file, i) => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      path: file.path.replace(/\\/g, "/").replace(/^.*[\\\/]/, "uploads/"),
+    const image = new Image({
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      path: req.file.path.replace(/\\/g, "/").replace(/^.*[\\\/]/, "uploads/"),
       dataset: dataset._id,
-      label: Array.isArray(req.body.label) ? req.body.label[i] : req.body.label,
-      labeledBy: Array.isArray(req.body.labeledBy)
-        ? req.body.labeledBy[i]
-        : req.body.labeledBy,
-      labeledAt: Array.isArray(req.body.labeledAt)
-        ? req.body.labeledAt[i]
-        : req.body.labeledAt,
-      coordinates: Array.isArray(req.body.coordinates)
-        ? JSON.parse(req.body.coordinates[i])
-        : req.body.coordinates
+      label: req.body.label,
+      labeledBy: req.body.labeledBy,
+      labeledAt: req.body.labeledAt,
+      coordinates: req.body.coordinates
         ? JSON.parse(req.body.coordinates)
         : null,
-      boundingBox: Array.isArray(req.body.boundingBox)
-        ? JSON.parse(req.body.boundingBox[i])
-        : req.body.boundingBox
+      boundingBox: req.body.boundingBox
         ? JSON.parse(req.body.boundingBox)
         : null,
-      isCropped: Array.isArray(req.body.isCropped)
-        ? req.body.isCropped[i] === "true"
-        : req.body.isCropped === "true",
-    }));
+      isCropped: req.body.isCropped === "true",
+    });
 
-    const savedImages = await Image.insertMany(images);
-    res.status(201).json(savedImages);
+    await image.save();
+    res.status(201).json(image);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 });
 
-// Get label statistics for an image
 router.get("/image/:imageId/label-stats", async (req, res) => {
   try {
     const image = await Image.findById(req.params.imageId);
@@ -203,7 +185,6 @@ router.get("/image/:imageId/label-stats", async (req, res) => {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    // Get the latest label for each user
     const latestLabels = {};
     if (image.labels && Array.isArray(image.labels)) {
       image.labels.forEach((label) => {
@@ -217,7 +198,6 @@ router.get("/image/:imageId/label-stats", async (req, res) => {
       });
     }
 
-    // Count labels
     const labelCounts = {};
     Object.values(latestLabels).forEach((label) => {
       if (label.label) {
@@ -225,7 +205,6 @@ router.get("/image/:imageId/label-stats", async (req, res) => {
       }
     });
 
-    // Convert to array format for chart
     const stats = Object.entries(labelCounts).map(([label, count]) => ({
       label,
       count,
@@ -236,6 +215,72 @@ router.get("/image/:imageId/label-stats", async (req, res) => {
     console.error("Error getting label stats:", error);
     res.status(500).json({ message: error.message });
   }
+});
+
+router.get("/images/:datasetName", async (req, res) => {
+  gfs.files
+    .find({ "metadata.datasetName": req.params.datasetName })
+    .toArray((err, files) => {
+      if (!files || files.length === 0) {
+        return res.status(404).json({ message: "No files found" });
+      }
+      res.json(files);
+    });
+});
+
+router.get("/image/:id", (req, res) => {
+  gfs.files.findOne(
+    { _id: mongoose.Types.ObjectId(req.params.id) },
+    (err, file) => {
+      if (!file || file.length === 0) {
+        return res.status(404).json({ message: "No file found" });
+      }
+      const readstream = gfs.createReadStream(file.filename);
+      res.set("Content-Type", file.contentType);
+      readstream.pipe(res);
+    }
+  );
+});
+
+router.post("/upload/avatar", upload.single("avatar"), async (req, res) => {
+  try {
+    const userId = req.body.userId;
+    const avatarFileId = req.file.id;
+
+    const User = require("../models/User");
+    await User.findByIdAndUpdate(userId, { avatar: avatarFileId });
+
+    res
+      .status(201)
+      .json({ message: "Avatar uploaded", avatarId: avatarFileId });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.get("/avatar/:id", (req, res) => {
+  gfs.files.findOne(
+    { _id: mongoose.Types.ObjectId(req.params.id) },
+    (err, file) => {
+      if (!file || file.length === 0) {
+        return res.status(404).json({ message: "No avatar found" });
+      }
+      const readstream = gfs.createReadStream(file.filename);
+      res.set("Content-Type", file.contentType);
+      readstream.pipe(res);
+    }
+  );
+});
+
+const mongoURI = "mongodb://localhost:27017/your_db_name";
+
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
+const conn = mongoose.connection;
+
+let gfs;
+conn.once("open", () => {
+  gfs = Grid(conn.db, mongoose.mongo);
+  gfs.collection("uploads");
 });
 
 module.exports = router;

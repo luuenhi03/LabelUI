@@ -156,7 +156,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
                 "Content-Type": "multipart/form-data",
                 Authorization: `Bearer ${token}`,
               },
-              timeout: 60000, // 60 seconds timeout
+              timeout: 60000,
             }
           );
 
@@ -354,7 +354,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
         </div>
       )}
 
-      {loading && <div className="loading">Đang tải dữ liệu...</div>}
+      {loading && <div className="loading">Loading...</div>}
     </div>
   );
 };

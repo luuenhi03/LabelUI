@@ -45,15 +45,14 @@ const ImageLabelPieChart = ({
     )
       .then((res) => res.json())
       .then((stats) => {
-        // Ensure stats is an array
         if (!Array.isArray(stats)) {
           console.error("Stats is not an array:", stats);
           setData([]);
           return;
         }
-        // Calculate total count
+
         const total = stats.reduce((sum, item) => sum + item.count, 0);
-        // Add percentage to each item
+
         const dataWithPercentage = stats.map((item) => ({
           ...item,
           percentage: ((item.count / total) * 100).toFixed(1),
@@ -147,7 +146,6 @@ const Label = forwardRef((props, sref) => {
   }));
 
   useEffect(() => {
-    // Ưu tiên lấy datasetId từ URL (params hoặc query)
     let urlDatasetId = params.id;
     if (!urlDatasetId) {
       const searchParams = new URLSearchParams(location.search);
@@ -174,7 +172,6 @@ const Label = forwardRef((props, sref) => {
       loadImageList();
       loadLabeledImages(0);
     }
-    // eslint-disable-next-line
   }, [selectedDataset, imageIdFromUrl]);
 
   useEffect(() => {
@@ -204,7 +201,6 @@ const Label = forwardRef((props, sref) => {
       setImageList(response.data);
       setTotalImages(response.data.length);
 
-      // Thêm log kiểm tra
       console.log("Selected dataset:", selectedDataset);
       console.log("Image list from API:", response.data);
       console.log("imageIdFromUrl:", imageIdFromUrl);
@@ -244,7 +240,6 @@ const Label = forwardRef((props, sref) => {
 
       console.log("Loading image:", image);
 
-      // Create URL for image from fileId
       let imageUrl;
       if (image.fileId) {
         imageUrl = `http://localhost:5000/api/dataset/file/${image.fileId}`;
@@ -307,13 +302,11 @@ const Label = forwardRef((props, sref) => {
       return;
     }
 
-    // Validate dataset ID format
     if (!/^[0-9a-fA-F]{24}$/.test(selectedDataset)) {
       setMessage("Invalid Dataset ID!");
       return;
     }
 
-    // Always get email from localStorage
     const storedUser = JSON.parse(localStorage.getItem("user"));
     const email = storedUser?.email;
     if (!email) {
@@ -324,7 +317,6 @@ const Label = forwardRef((props, sref) => {
     }
 
     try {
-      // Save the label
       const response = await axios.put(
         `http://localhost:5000/api/dataset/${selectedDataset}/images/${selectedImage._id}`,
         {
@@ -341,11 +333,10 @@ const Label = forwardRef((props, sref) => {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          validateStatus: () => true, // To always receive response, even on error
+          validateStatus: () => true,
         }
       );
 
-      // If authentication is lost, redirect to login
       if (response.status === 401 || response.status === 403) {
         localStorage.removeItem("user");
         localStorage.removeItem("token");
@@ -359,9 +350,7 @@ const Label = forwardRef((props, sref) => {
         return;
       }
 
-      // Add the newly labeled image to the latest labeled images
       setLatestLabeled((prev) => {
-        // Nếu ảnh đã có trong latestLabeled thì cập nhật lại, nếu chưa có thì thêm mới vào đầu mảng
         const exists = prev.some((img) => img._id === selectedImage._id);
         const newLabeled = {
           ...selectedImage,
@@ -398,7 +387,6 @@ const Label = forwardRef((props, sref) => {
           : prev
       );
 
-      // Update label for current image in imageList
       const updatedImageList = imageList.map((img, idx) =>
         idx === currentIndex
           ? {
@@ -411,14 +399,12 @@ const Label = forwardRef((props, sref) => {
       );
       setImageList(updatedImageList);
 
-      // Move to next image if available, otherwise stay on current image
       if (currentIndex < imageList.length - 1) {
         loadImage(updatedImageList[currentIndex + 1], currentIndex + 1);
       } else {
         setMessage("All images in dataset have been labeled.");
       }
 
-      // After saving label, update the Labeled Images section
       await loadLabeledImages(0);
       setStatsRefreshKey((k) => k + 1);
 
@@ -441,7 +427,6 @@ const Label = forwardRef((props, sref) => {
       return;
     }
 
-    // Always get email from localStorage
     const storedUser = JSON.parse(localStorage.getItem("user"));
     const email = storedUser?.email || "";
 
@@ -454,7 +439,6 @@ const Label = forwardRef((props, sref) => {
         }
       );
 
-      // Update the label in the latestLabeled state
       setLatestLabeled((prev) =>
         prev.map((img) =>
           img._id === imageId
@@ -479,7 +463,7 @@ const Label = forwardRef((props, sref) => {
       const response = await axios.get(
         `http://localhost:5000/api/dataset/${selectedDataset}/labeled?page=${page}`
       );
-      // Lọc và sắp xếp ảnh: ảnh đã crop sẽ hiển thị trước
+
       const sortedImages = response.data.images.sort((a, b) => {
         if (a.isCropped && !b.isCropped) return -1;
         if (!a.isCropped && b.isCropped) return 1;
@@ -507,11 +491,10 @@ const Label = forwardRef((props, sref) => {
       );
 
       if (response.status === 200) {
-        // Reload the image list to get the updated state from server
         await loadImageList();
-        // Reload labeled images to update the labeled images section
+
         await loadLabeledImages(0);
-        // Update statistics
+
         setStatsRefreshKey((k) => k + 1);
 
         setMessage("Image label information deleted successfully!");
@@ -543,14 +526,14 @@ const Label = forwardRef((props, sref) => {
       localStorage.removeItem("selectedDataset");
       return;
     }
-    // Validate dataset ID format
+
     if (!/^[0-9a-fA-F]{24}$/.test(datasetId)) {
       console.error("Invalid dataset ID format:", datasetId);
       setMessage("Invalid Dataset ID!");
       return;
     }
     setSelectedDataset(datasetId);
-    // Save selected dataset name
+
     const selectedDataset = datasets.find((d) => d._id === datasetId);
     if (selectedDataset) {
       setSelectedDatasetName(selectedDataset.name);
@@ -597,13 +580,11 @@ const Label = forwardRef((props, sref) => {
   };
 
   const handleLogout = () => {
-    // Clear any stored data if needed
     localStorage.removeItem("selectedDataset");
-    // Navigate to login page
+
     navigate("/login");
   };
 
-  // Demo dữ liệu thống kê
   const chartData = [
     { label: "Nhãn 1", count: 10 },
     { label: "Nhãn 2", count: 5 },
@@ -611,7 +592,6 @@ const Label = forwardRef((props, sref) => {
   ];
   const userCount = 4;
 
-  // Hàm xóa nhãn (reset label) cho ảnh đã gán nhãn
   const handleResetLabel = async (imageId) => {
     if (!selectedDataset) {
       alert("Please select a dataset first!");
@@ -626,7 +606,7 @@ const Label = forwardRef((props, sref) => {
           labeledAt: null,
         }
       );
-      // Update latestLabeled (hide the reset image)
+
       setLatestLabeled((prev) => prev.filter((img) => img._id !== imageId));
       setMessage("Label reset successfully!");
       setTimeout(() => setMessage(""), 3000);
@@ -637,13 +617,12 @@ const Label = forwardRef((props, sref) => {
     }
   };
 
-  // Hàm ẩn ảnh khỏi danh sách chính (Label Image), không xóa khỏi dataset
   const handleHideFromMainList = (imageId) => {
     setImageList((prevList) => {
       const newList = prevList.filter((image) => image._id !== imageId);
-      // Find index of current image
+
       const deletedIndex = prevList.findIndex((img) => img._id === imageId);
-      // If there are images left, move to next or previous image
+
       if (newList.length > 0) {
         const nextIndex = Math.min(deletedIndex, newList.length - 1);
         setCurrentIndex(nextIndex);
@@ -665,7 +644,7 @@ const Label = forwardRef((props, sref) => {
     <div className="label-container">
       <div className="main-content">
         <div className="label-section">
-          {/* Upload component if exists */}
+          {}
           {uploadComponent
             ? React.cloneElement(uploadComponent, {
                 onUploadSuccess: loadImageList,
@@ -794,11 +773,9 @@ const Label = forwardRef((props, sref) => {
                 try {
                   setShowCrop(false);
 
-                  // Update imageList and latestLabeled from backend
                   await loadImageList();
                   await loadLabeledImages(0);
 
-                  // Reset related states if needed
                   setMessage("Image processing completed successfully!");
                   setTimeout(() => setMessage(""), 3000);
                 } catch (error) {
@@ -818,7 +795,7 @@ const Label = forwardRef((props, sref) => {
         </div>
       </div>
 
-      {/* Recent Labeled */}
+      {}
       <div className="recent-labels">
         <h2>Labeled Images</h2>
         <div className="recent-images">
