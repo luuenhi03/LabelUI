@@ -58,25 +58,13 @@ const MONGODB_URI =
 console.log("Connecting to MongoDB:", MONGODB_URI);
 
 let gfs;
+const conn = mongoose.connection;
 
-mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => {
-    console.log("Successfully connected to MongoDB");
-    gfs = Grid(mongoose.connection.db, mongoose.mongo);
-    gfs.collection("uploads");
-    console.log("GridFS initialized successfully");
-  })
-  .catch((err) => {
-    console.error("MongoDB connection error:", {
-      message: err.message,
-      stack: err.stack,
-    });
-    process.exit(1);
-  });
+conn.once("open", () => {
+  gfs = Grid(conn.db, mongoose.mongo);
+  gfs.collection("uploads");
+  console.log("Successfully connected to MongoDB and initialized GridFS");
+});
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));
@@ -172,3 +160,6 @@ server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`WebSocket server is running on ws://localhost:${PORT}/ws`);
 });
+
+// Export gfs nếu cần dùng ở file khác
+module.exports = { gfs };

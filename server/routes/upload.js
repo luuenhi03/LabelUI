@@ -1,3 +1,5 @@
+const mongoURI = "mongodb://localhost:27017/label_db";
+
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -272,8 +274,6 @@ router.get("/avatar/:id", (req, res) => {
   );
 });
 
-const mongoURI = "mongodb://localhost:27017/your_db_name";
-
 mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
 const conn = mongoose.connection;
 
@@ -281,6 +281,7 @@ let gfs;
 conn.once("open", () => {
   gfs = Grid(conn.db, mongoose.mongo);
   gfs.collection("uploads");
+  console.log("Successfully connected to MongoDB and initialized GridFS");
 });
 
 module.exports = router;
