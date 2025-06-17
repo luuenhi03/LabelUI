@@ -35,6 +35,10 @@ const datasetSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
+  isPrivate: {
+    type: Boolean,
+    default: false,
+  },
   imageCount: {
     type: Number,
     default: 0,

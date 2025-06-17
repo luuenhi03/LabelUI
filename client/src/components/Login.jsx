@@ -13,7 +13,6 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Tự động điền thông tin từ trang đăng ký
   useEffect(() => {
     if (location.state?.email) {
       setEmail(location.state.email);
@@ -25,7 +24,7 @@ const Login = () => {
 
   const handleLogin = useCallback(async () => {
     if (!email || !password) {
-      setError("Vui lòng nhập đầy đủ thông tin!");
+      setError("Please enter all required information!");
       return;
     }
 
@@ -40,13 +39,12 @@ const Login = () => {
         }
       );
 
-      // Lưu token và thông tin user vào localStorage
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
 
       navigate("/");
     } catch (error) {
-      const message = error.response?.data?.message || "Đăng nhập thất bại";
+      const message = error.response?.data?.message || "Login failed";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -99,7 +97,7 @@ const Login = () => {
           <i className="fa-solid fa-key"></i>
           <input
             type={isShowPassword ? "text" : "password"}
-            placeholder="Mật khẩu"
+            placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onFocus={() => setError("")}
@@ -126,7 +124,7 @@ const Login = () => {
             boxShadow: "0 2px 8px rgba(95,42,237,0.08)",
           }}
         >
-          {isLoading ? "Đang đăng nhập..." : "Log in"}
+          {isLoading ? "Logging in..." : "Log in"}
         </button>
       </form>
       <div

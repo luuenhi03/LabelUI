@@ -15,25 +15,19 @@ const DatasetPage = () => {
         const storedUser = JSON.parse(localStorage.getItem("user"));
         console.log("Stored user:", storedUser);
 
-        // Tạm thời bỏ kiểm tra userId để test
-        // if (!storedUser || !storedUser.id) {
-        //   setError("Vui lòng đăng nhập để xem danh sách dataset!");
-        //   return;
-        // }
+        if (!storedUser || !storedUser.id) {
+          setError("Please login to view dataset list!");
+          return;
+        }
 
         console.log("Fetching datasets...");
-        const response = await fetch(
-          `/api/dataset`
-          // `/api/dataset?userId=${storedUser.id}`
-        );
+        const response = await fetch(`/api/dataset?userId=${storedUser.id}`);
 
         console.log("Response status:", response.status);
         if (!response.ok) {
           const errorData = await response.json();
           console.error("API Error:", errorData);
-          throw new Error(
-            errorData.message || "Không thể tải danh sách dataset"
-          );
+          throw new Error(errorData.message || "Unable to load dataset list");
         }
 
         const data = await response.json();
@@ -71,7 +65,9 @@ const DatasetPage = () => {
         Dataset List
       </h2>
       {loading ? (
-        <div style={{ textAlign: "center", fontSize: 22 }}>Loading...</div>
+        <div style={{ textAlign: "center", fontSize: 22, width: 600 }}>
+          Loading...
+        </div>
       ) : error ? (
         <div style={{ color: "red", textAlign: "center", fontSize: 20 }}>
           {error}

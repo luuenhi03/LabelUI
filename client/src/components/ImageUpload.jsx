@@ -12,12 +12,9 @@ const ImageUpload = ({ onUploadSuccess }) => {
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  const [editDatasetId, setEditDatasetId] = useState(null);
-  const [editDatasetName, setEditDatasetName] = useState("");
-  const [shareDatasetId, setShareDatasetId] = useState(null);
-  const [shareEmail, setShareEmail] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [datasetsError, setDatasetsError] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
 
   useEffect(() => {
     fetchDatasets();
@@ -31,23 +28,21 @@ const ImageUpload = ({ onUploadSuccess }) => {
       const storedUser = JSON.parse(localStorage.getItem("user"));
       console.log("Stored user:", storedUser);
 
-      // Tạm thời bỏ kiểm tra userId để test
-      // if (!storedUser || !storedUser.id) {
-      //   setMessage("Vui lòng đăng nhập để xem danh sách dataset!");
-      //   return;
-      // }
+      if (!storedUser || !storedUser.id) {
+        setMessage("Please login to view dataset list!");
+        return;
+      }
 
       console.log("Fetching datasets...");
       const response = await axios.get(
-        `http://localhost:5000/api/dataset`
-        // `http://localhost:5000/api/dataset?userId=${storedUser.id}`
+        `http://localhost:5000/api/dataset?userId=${storedUser.id}`
       );
 
       console.log("API Response:", response.data);
       setDatasets(response.data);
       setMessage("");
     } catch (error) {
-      console.error("Lỗi khi lấy danh sách dataset:", error);
+      console.error("Error fetching dataset list:", error);
       console.error("Error details:", {
         message: error.message,
         response: error.response?.data,
@@ -75,6 +70,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
       const response = await axios.post("http://localhost:5000/api/dataset", {
         name: newDatasetName.trim(),
         userId: storedUser.id,
+        isPrivate: isPrivate,
       });
 
       setDatasets([...datasets, response.data]);
@@ -82,17 +78,36 @@ const ImageUpload = ({ onUploadSuccess }) => {
       setNewDatasetName("");
       setMessage("Dataset created successfully!");
     } catch (error) {
-      console.error("Lỗi khi tạo dataset:", error);
+      console.error("Error creating dataset:", error);
       setMessage("Cannot create dataset. Please try again later.");
     }
   };
 
   const handleFileSelect = (event) => {
+    setMessage("");
     const files = Array.from(event.target.files);
+    const maxSize = 10 * 1024 * 1024;
+    const maxFiles = 10;
+
+    if (files.length > maxFiles) {
+      setMessage(`Maximum ${maxFiles} files allowed.`);
+      return;
+    }
+    for (let file of files) {
+      if (file.size > maxSize) {
+        setMessage("File too large. Maximum allowed size is 10MB.");
+        return;
+      }
+    }
+
+    if (!selectedDataset) {
+      setMessage("Please select dataset!");
+    }
     setImages(files);
   };
 
   const handleFolderSelect = async (event) => {
+    setMessage("");
     const files = event.target.files;
     if (!files.length) return;
 
@@ -103,7 +118,6 @@ const ImageUpload = ({ onUploadSuccess }) => {
       }
     };
 
-    // Process all files in the folder
     for (let i = 0; i < files.length; i++) {
       processFile(files[i]);
     }
@@ -112,6 +126,12 @@ const ImageUpload = ({ onUploadSuccess }) => {
   };
 
   const uploadImages = async () => {
+    if (!window.navigator.onLine) {
+      setMessage(
+        "No internet connection. Please check your network and try again."
+      );
+      return;
+    }
     if (!selectedDataset) {
       setMessage("Please select a dataset!");
       return;
@@ -124,7 +144,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
 
     try {
       setUploading(true);
-      setMessage(""); // Clear any previous message immediately
+      setMessage("");
 
       const token = localStorage.getItem("token");
       if (!token) {
@@ -132,7 +152,6 @@ const ImageUpload = ({ onUploadSuccess }) => {
         return;
       }
 
-      // Upload in batches of 5 files
       const batchSize = 5;
       for (let i = 0; i < images.length; i += batchSize) {
         const batch = images.slice(i, i + batchSize);
@@ -177,7 +196,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
       }
 
       setMessage(`Successfully uploaded ${images.length} images!`);
-      setTimeout(() => setMessage(""), 3000); // Hide success after 3s
+      setTimeout(() => setMessage(""), 3000);
       setImages([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -186,7 +205,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
         folderInputRef.current.value = "";
       }
     } catch (error) {
-      console.error("Lỗi khi upload:", error);
+      console.error("Error uploading:", error);
       setMessage(
         error.response?.data?.message ||
           error.message ||
@@ -197,136 +216,120 @@ const ImageUpload = ({ onUploadSuccess }) => {
     }
   };
 
-  const handleEditDataset = (dataset) => {
-    setEditDatasetId(dataset._id);
-    setEditDatasetName(dataset.name);
-    setActionMessage("");
-  };
-
-  const handleEditDatasetSave = async (datasetId) => {
-    if (!editDatasetName.trim()) return;
-    try {
-      const storedUser = JSON.parse(localStorage.getItem("user"));
-      const email = storedUser?.email || "";
-
-      await axios.put(`http://localhost:5000/api/dataset/${datasetId}`, {
-        name: editDatasetName.trim(),
-        labeledBy: email,
-      });
-      setActionMessage("Đã đổi tên dataset thành công!");
-      setEditDatasetId(null);
-      setEditDatasetName("");
-      fetchDatasets();
-    } catch (err) {
-      setActionMessage("Lỗi khi đổi tên dataset!");
-    }
-  };
-
-  const handleShareDataset = (dataset) => {
-    setShareDatasetId(dataset._id);
-    setShareEmail("");
-    setActionMessage("");
-  };
-
-  const handleShareDatasetSend = async (datasetId) => {
-    if (!shareEmail.trim()) return;
-    try {
-      const storedUser = JSON.parse(localStorage.getItem("user"));
-      const email = storedUser?.email || "";
-
-      await axios.post(`http://localhost:5000/api/dataset/${datasetId}/share`, {
-        email: shareEmail.trim(),
-      });
-      setActionMessage("Đã chia sẻ dataset thành công!");
-      setShareDatasetId(null);
-      setShareEmail("");
-    } catch (err) {
-      setActionMessage("Lỗi khi chia sẻ dataset!");
-    }
-  };
-
   const handleDatasetSelect = (e) => {
     setSelectedDataset(e.target.value);
-    setMessage(""); // Clear message when selecting new dataset
+    setMessage("");
   };
 
   return (
-    <div className="image-upload-container">
-      <div className="dataset-section">
-        {/* <h2>Quản lý Dataset</h2> */}
+    <div
+      className="upload-container"
+      style={{
+        maxWidth: "800px",
+        margin: "40px auto",
+        padding: "30px",
+        backgroundColor: "#fff",
+        borderRadius: "12px",
+        boxShadow: "0 2px 12px rgba(0, 0, 0, 0.1)",
+      }}
+    >
+      <div
+        className="dataset-controls"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "20px",
+          marginBottom: "30px",
+        }}
+      >
+        <select
+          className="dataset-select"
+          value={selectedDataset}
+          onChange={(e) => setSelectedDataset(e.target.value)}
+          style={{
+            padding: "12px 16px",
+            border: "1px solid #e0e0e0",
+            borderRadius: "8px",
+            backgroundColor: "#fff",
+            fontSize: "15px",
+            width: "100%",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <option value="">Select dataset...</option>
+          {datasets.map((dataset) => (
+            <option key={dataset._id} value={dataset._id}>
+              {dataset.name}
+            </option>
+          ))}
+        </select>
 
-        <div className="create-dataset">
+        <div
+          className="new-dataset"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+            padding: "20px",
+            backgroundColor: "#f8f9fa",
+            borderRadius: "8px",
+            border: "1px solid #e0e0e0",
+          }}
+        >
           <input
             type="text"
+            className="dataset-input"
+            placeholder="Enter dataset name..."
             value={newDatasetName}
             onChange={(e) => setNewDatasetName(e.target.value)}
-            placeholder="Enter new dataset name"
-            className="dataset-input"
+            style={{
+              padding: "12px 16px",
+              border: "1px solid #e0e0e0",
+              borderRadius: "8px",
+              backgroundColor: "#fff",
+              fontSize: "15px",
+              transition: "all 0.2s ease",
+            }}
           />
+
+          <select
+            className="privacy-select"
+            value={isPrivate ? "private" : "public"}
+            onChange={(e) => setIsPrivate(e.target.value === "private")}
+            style={{
+              padding: "12px 16px",
+              border: "1px solid #e0e0e0",
+              borderRadius: "8px",
+              backgroundColor: "#fff",
+              fontSize: "15px",
+              width: "100%",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
+          >
+            <option value="public">Public Dataset</option>
+            <option value="private">Private Dataset</option>
+          </select>
+
           <button
-            onClick={createDataset}
             className="create-btn"
+            onClick={createDataset}
             disabled={!newDatasetName.trim()}
+            style={{
+              padding: "12px 24px",
+              backgroundColor: "#1976d2",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              fontSize: "15px",
+              fontWeight: "500",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              opacity: !newDatasetName.trim() ? "0.7" : "1",
+            }}
           >
             Create Dataset
-          </button>
-        </div>
-
-        <div className="select-dataset">
-          <select
-            value={selectedDataset}
-            onChange={handleDatasetSelect}
-            className="dataset-select"
-          >
-            <option value="">Select dataset</option>
-            {datasets.map((dataset) => (
-              <option key={dataset._id} value={dataset._id}>
-                {dataset.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="upload-area">
-          <div className="upload-options">
-            <div className="upload-option">
-              <label className="upload-label">
-                Choose file
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  ref={fileInputRef}
-                  className="file-input"
-                />
-              </label>
-            </div>
-            <div className="upload-option">
-              <label className="upload-label">
-                Choose folder
-                <input
-                  type="file"
-                  webkitdirectory="true"
-                  directory="true"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFolderSelect}
-                  ref={folderInputRef}
-                  className="file-input"
-                />
-              </label>
-            </div>
-          </div>
-          <div className="selected-files">
-            {images.length > 0 && <p>{images.length} images selected</p>}
-          </div>
-          <button
-            onClick={uploadImages}
-            disabled={!selectedDataset || images.length === 0 || uploading}
-            className="upload-btn"
-          >
-            {uploading ? "Uploading..." : "Upload Images"}
           </button>
         </div>
       </div>
@@ -334,27 +337,175 @@ const ImageUpload = ({ onUploadSuccess }) => {
       {message && (
         <div
           className={`message ${
-            message.includes("Successfully uploaded") ||
-            message.includes("Dataset created successfully")
-              ? "success"
-              : "error"
+            message.includes("Cannot") ? "error" : "success"
           }`}
-          style={
-            message.includes("Successfully uploaded") ||
-            message.includes("Dataset created successfully")
-              ? {
-                  background: "#d4edda",
-                  color: "#155724",
-                  border: "1px solid #c3e6cb",
-                }
-              : {}
-          }
+          style={{
+            padding: "12px 16px",
+            borderRadius: "8px",
+            marginBottom: "20px",
+            fontSize: "14px",
+            textAlign: "center",
+          }}
         >
           {message}
         </div>
       )}
 
-      {loading && <div className="loading">Loading...</div>}
+      <div
+        className="upload-area"
+        style={{
+          border: "2px dashed #e0e0e0",
+          borderRadius: "12px",
+          padding: "30px",
+          textAlign: "center",
+          backgroundColor: "#fafafa",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <input
+          type="file"
+          ref={fileInputRef}
+          multiple
+          accept="image/*"
+          onChange={handleFileSelect}
+          style={{ display: "none" }}
+        />
+        <input
+          type="file"
+          ref={folderInputRef}
+          webkitdirectory=""
+          directory=""
+          onChange={handleFolderSelect}
+          style={{ display: "none" }}
+        />
+        <div
+          style={{
+            border: "2px dashed #ccc",
+            borderRadius: "8px",
+            padding: "20px",
+            textAlign: "center",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "center",
+            gap: "20px",
+          }}
+        >
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              width: "180px",
+              padding: "10px 0",
+              backgroundColor: "#fff",
+              border: "1px solid #1976d2",
+              color: "#1976d2",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "15px",
+              transition: "all 0.2s",
+            }}
+            onMouseOver={(e) => {
+              e.target.style.backgroundColor = "#f5f9ff";
+            }}
+            onMouseOut={(e) => {
+              e.target.style.backgroundColor = "#fff";
+            }}
+          >
+            Select Files
+          </button>
+          <button
+            onClick={() => folderInputRef.current?.click()}
+            style={{
+              width: "180px",
+              padding: "10px 0",
+              backgroundColor: "#fff",
+              border: "1px solid #1976d2",
+              color: "#1976d2",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "15px",
+              transition: "all 0.2s",
+            }}
+            onMouseOver={(e) => {
+              e.target.style.backgroundColor = "#f5f9ff";
+            }}
+            onMouseOut={(e) => {
+              e.target.style.backgroundColor = "#fff";
+            }}
+          >
+            Select Folder
+          </button>
+        </div>
+        {images.length > 0 && (
+          <>
+            <div
+              className="selected-files"
+              style={{
+                color: "#666",
+                fontSize: "14px",
+                marginBottom: "20px",
+              }}
+            >
+              {images.length} file(s) selected
+            </div>
+            <button
+              onClick={uploadImages}
+              disabled={!selectedDataset || images.length === 0}
+              style={{
+                padding: "12px 32px",
+                backgroundColor: "#1976d2",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "15px",
+                fontWeight: "500",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                opacity: !selectedDataset || images.length === 0 ? "0.7" : "1",
+              }}
+            >
+              Upload Images
+            </button>
+          </>
+        )}
+      </div>
+
+      <style>{`
+        .upload-label:hover {
+          background-color: #f5f9ff !important;
+          border-color: #1565c0 !important;
+          color: #1565c0 !important;
+          transform: translateY(-1px);
+        }
+        .dataset-select:hover, .privacy-select:hover {
+          border-color: #1976d2;
+        }
+        .dataset-select:focus, .privacy-select:focus, .dataset-input:focus {
+          border-color: #1976d2;
+          box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.1);
+          outline: none;
+        }
+        .create-btn:hover:enabled {
+          background-color: #1565c0;
+          transform: translateY(-1px);
+        }
+        .create-btn:active:enabled {
+          transform: translateY(0);
+        }
+        .message.success {
+          background-color: #e8f5e9;
+          color: #2e7d32;
+          border: 1px solid #c8e6c9;
+        }
+        .message.error {
+          background-color: #ffebee;
+          color: #c62828;
+          border: 1px solid #ffcdd2;
+        }
+        .upload-area:hover {
+          border-color: #1976d2;
+          background-color: #f5f9ff;
+        }
+      `}</style>
     </div>
   );
 };

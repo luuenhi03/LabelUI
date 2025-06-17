@@ -75,7 +75,7 @@ app.get("/api/dataset/image/:fileId", async (req, res) => {
   try {
     console.log("Attempting to serve image with fileId:", req.params.fileId);
 
-    // Kiểm tra fileId hợp lệ
+    // Check if fileId is valid
     if (!mongoose.Types.ObjectId.isValid(req.params.fileId)) {
       console.error("Invalid fileId format:", req.params.fileId);
       return res.status(400).json({ message: "Invalid fileId format" });
@@ -92,7 +92,7 @@ app.get("/api/dataset/image/:fileId", async (req, res) => {
       return res.status(404).json({ message: "File not found in GridFS" });
     }
 
-    // Kiểm tra xem file có phải là ảnh không
+    // Check if file is an image
     if (!file.contentType || !file.contentType.startsWith("image/")) {
       console.error("File is not an image:", file.contentType);
       return res.status(400).json({ message: "File is not an image" });
@@ -161,5 +161,5 @@ server.listen(PORT, () => {
   console.log(`WebSocket server is running on ws://localhost:${PORT}/ws`);
 });
 
-// Export gfs nếu cần dùng ở file khác
+// Export gfs if needed in other files
 module.exports = { gfs };

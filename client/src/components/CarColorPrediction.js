@@ -8,8 +8,8 @@ const CarColorPrediction = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // URL của server B (thay đổi theo địa chỉ IP của server)
-  const SERVER_URL = "http://your-server-ip:5000/predict";
+  // Server B URL (change according to server IP address)
+  const serverBUrl = "http://localhost:5001";
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -18,7 +18,7 @@ const CarColorPrediction = () => {
       setError(null);
       setResult(null);
 
-      // Tạo preview
+      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreview(e.target.result);
@@ -38,10 +38,10 @@ const CarColorPrediction = () => {
     setResult(null);
 
     const formData = new FormData();
-    formData.append("file", selectedFile);
+    formData.append("image", selectedFile);
 
     try {
-      const response = await fetch(SERVER_URL, {
+      const response = await fetch(serverBUrl, {
         method: "POST",
         body: formData,
       });
@@ -50,8 +50,10 @@ const CarColorPrediction = () => {
 
       if (data.error) {
         setError(data.error);
+      } else if (data.result) {
+        setResult(data.result);
       } else {
-        setResult(data.color);
+        setError("No result returned from server.");
       }
     } catch (err) {
       setError("Connection error to server: " + err.message);
@@ -105,8 +107,11 @@ const CarColorPrediction = () => {
 
       {error && <div className="error-message">{error}</div>}
 
-      {result && (
-        <div className="result-message">Predicted color: {result}</div>
+      {result && result.prediction && (
+        <div className="result-message">
+          Predicted color: {result.prediction.predicted_class} <br />
+          Confidence: {result.prediction.confidence}
+        </div>
       )}
     </div>
   );

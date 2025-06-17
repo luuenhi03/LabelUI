@@ -44,7 +44,7 @@ const upload = multer({
     files: 10,
   },
   fileFilter: (req, file, cb) => {
-    if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
+    if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
       return cb(new Error("Only image files are accepted!"), false);
     }
     cb(null, true);
@@ -211,7 +211,21 @@ router.get("/", async (req, res) => {
   try {
     console.log("=== Get Datasets Debug ===");
     console.log("Query params:", req.query);
-    const datasets = await Dataset.find({});
+
+    const userId = req.query.userId;
+    let query = {};
+
+    if (userId) {
+      // Get all public datasets and private datasets owned by the user
+      query = {
+        $or: [{ isPrivate: false }, { userId: userId }],
+      };
+    } else {
+      // Get only public datasets
+      query = { isPrivate: false };
+    }
+
+    const datasets = await Dataset.find(query);
     console.log("Found datasets:", datasets.length);
     console.log(
       "Datasets:",
@@ -238,6 +252,7 @@ router.post("/", async (req, res) => {
     const newDataset = new Dataset({
       name: req.body.name.trim(),
       userId: req.body.userId,
+      isPrivate: req.body.isPrivate || false,
     });
     const savedDataset = await newDataset.save();
     res.json(savedDataset);
@@ -287,6 +302,7 @@ router.post(
   checkDatasetExists,
   upload.array("images"),
   async (req, res) => {
+    const startTime = performance.now();
     console.log("=== Upload Debug ===");
     console.log("Request params:", req.params);
     console.log("Request files:", req.files?.length || 0, "files");
@@ -330,8 +346,10 @@ router.post(
 
       dataset.images = dataset.images || [];
       const savedImages = [];
+      const imageProcessingTimes = [];
 
       for (let i = 0; i < req.files.length; i++) {
+        const imageStartTime = performance.now();
         const file = req.files[i];
         console.log(`Processing file ${i + 1}/${req.files.length}:`, {
           filename: file.filename,
@@ -415,33 +433,59 @@ router.post(
 
         dataset.images.push(imageData);
         savedImages.push(imageData);
+
+        const imageEndTime = performance.now();
+        const imageProcessingTime = imageEndTime - imageStartTime;
+        imageProcessingTimes.push({
+          filename: file.filename,
+          processingTime: imageProcessingTime.toFixed(2),
+        });
+        console.log(
+          `Image ${i + 1} processing time: ${imageProcessingTime.toFixed(2)}ms`
+        );
       }
 
       dataset.imageCount = dataset.images.length;
       console.log("Saving dataset with new images...");
+      const saveStartTime = performance.now();
       await dataset.save();
+      const saveEndTime = performance.now();
+      const savingTime = saveEndTime - saveStartTime;
       console.log("Dataset saved successfully:", {
         datasetId: dataset._id,
         totalImages: dataset.images.length,
         newImages: savedImages.length,
         userId: dataset.userId,
+        savingTime: `${savingTime.toFixed(2)}ms`,
       });
+
+      const endTime = performance.now();
+      const totalExecutionTime = endTime - startTime;
 
       res.status(200).json({
         message: "Images uploaded successfully",
         images: savedImages,
+        performance: {
+          totalTime: totalExecutionTime.toFixed(2),
+          savingTime: savingTime.toFixed(2),
+          imageProcessingTimes,
+        },
       });
     } catch (error) {
+      const endTime = performance.now();
+      const executionTime = endTime - startTime;
       console.error("Error uploading images:", error);
       console.error("Error details:", {
         message: error.message,
         stack: error.stack,
         code: error.code,
+        executionTime: `${executionTime.toFixed(2)}ms`,
       });
       res.status(500).json({
         message: "Error uploading images",
         error: error.message,
         details: error.stack,
+        executionTime: executionTime.toFixed(2),
       });
     }
   }
@@ -510,8 +554,8 @@ router.put("/:id/images/:imageId", checkDatasetExists, async (req, res) => {
     console.log("Request body:", req.body);
 
     const { label, labeledBy, boundingBox } = req.body;
-    if (!label || !label.trim()) {
-      return res.status(400).json({ message: "Label cannot be empty" });
+    if (label === undefined || label === null) {
+      return res.status(400).json({ message: "Label is required" });
     }
 
     const dataset = await Dataset.findById(req.params.id);
@@ -684,13 +728,8 @@ router.get("/:id/export", checkDatasetExists, async (req, res) => {
 
 router.delete("/:id/images/:imageId", checkDatasetExists, async (req, res) => {
   try {
-    console.log("=== Delete Image Debug ===");
-    console.log("Dataset ID:", req.params.id);
-    console.log("Image ID:", req.params.imageId);
-
     const dataset = await Dataset.findById(req.params.id);
     if (!dataset) {
-      console.log("Dataset not found");
       return res.status(404).json({ message: "Dataset not found" });
     }
 
@@ -699,32 +738,21 @@ router.delete("/:id/images/:imageId", checkDatasetExists, async (req, res) => {
     );
 
     if (imageIndex === -1) {
-      console.log("Image not found in dataset");
       return res.status(404).json({ message: "Image not found in dataset" });
     }
 
-    dataset.images[imageIndex].label = "";
-    dataset.images[imageIndex].labeledBy = "";
-    dataset.images[imageIndex].labeledAt = null;
-    dataset.images[imageIndex].labels = [];
-    dataset.images[imageIndex].boundingBox = null;
+    dataset.images.splice(imageIndex, 1);
 
     await dataset.save();
 
-    console.log("Image label information deleted successfully");
     res.json({
-      message: "Image label information deleted successfully",
+      message: "Image deleted successfully from dataset",
       datasetId: req.params.id,
       imageId: req.params.imageId,
     });
   } catch (error) {
-    console.error("Error deleting image label:", {
-      error: error.message,
-      stack: error.stack,
-      params: req.params,
-    });
     res.status(500).json({
-      message: "Error deleting image label",
+      message: "Error deleting image",
       error: error.message,
     });
   }
@@ -892,6 +920,17 @@ router.get("/:id", checkMongoConnection, async (req, res) => {
       });
     }
 
+    // Check access permission
+    const userId = req.query.userId;
+    if (
+      dataset.isPrivate &&
+      (!userId || dataset.userId.toString() !== userId)
+    ) {
+      return res.status(403).json({
+        message: "You don't have permission to access this dataset",
+      });
+    }
+
     console.log("Dataset found:", {
       id: dataset._id,
       name: dataset.name,
@@ -906,6 +945,66 @@ router.get("/:id", checkMongoConnection, async (req, res) => {
       error: error.message,
     });
   }
+});
+
+router.delete(
+  "/:id/images/:imageId/label",
+  checkDatasetExists,
+  async (req, res) => {
+    try {
+      let userEmail = null;
+      if (req.user && req.user.email) {
+        userEmail = req.user.email;
+      } else if (req.body && req.body.email) {
+        userEmail = req.body.email;
+      } else if (req.query && req.query.email) {
+        userEmail = req.query.email;
+      }
+      if (!userEmail)
+        return res.status(400).json({ message: "User email required" });
+
+      const dataset = await Dataset.findById(req.params.id);
+      if (!dataset)
+        return res.status(404).json({ message: "Dataset not found" });
+
+      const image = dataset.images.find(
+        (img) => img._id.toString() === req.params.imageId
+      );
+      if (!image) return res.status(404).json({ message: "Image not found" });
+
+      image.labels = (image.labels || []).filter(
+        (label) => label.labeledBy !== userEmail
+      );
+
+      if (image.labeledBy === userEmail) {
+        image.label = "";
+        image.labeledBy = "";
+        image.labeledAt = null;
+      }
+
+      await dataset.save();
+      res.json({ message: "User label deleted for this image" });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: "Error deleting user label", error: error.message });
+    }
+  }
+);
+
+router.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res
+        .status(400)
+        .json({ message: "File too large. Maximum allowed size is 10MB." });
+    }
+    return res.status(400).json({ message: err.message });
+  }
+  if (err.message === "Only image files are accepted!") {
+    return res.status(400).json({ message: err.message });
+  }
+  next(err);
 });
 
 module.exports = router;

@@ -59,10 +59,9 @@ function App() {
   );
 }
 
-// Wrapper component để lấy params
-function DatasetStatsWrapper() {
+const DatasetStatsWrapper = () => {
   const { id } = useParams();
   return <DatasetStats datasetId={id} />;
-}
+};
 
 export default App;

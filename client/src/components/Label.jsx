@@ -482,27 +482,41 @@ const Label = forwardRef((props, sref) => {
 
   const handleDeleteImageFromDataset = async (imageId) => {
     if (!selectedDataset) {
-      alert("Please select a dataset first!");
+      setMessage("Please select a dataset first!");
       return;
     }
     try {
+      // Always delete image completely from dataset when delete button is clicked in label section
       const response = await axios.delete(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}`
+        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
       );
 
       if (response.status === 200) {
         await loadImageList();
-
         await loadLabeledImages(0);
-
         setStatsRefreshKey((k) => k + 1);
 
-        setMessage("Image label information deleted successfully!");
-        setTimeout(() => setMessage(""), 3000);
+        setImageList((prevList) => {
+          const newList = prevList.filter((img) => img._id !== imageId);
+          if (newList.length > 0) {
+            const nextIndex = Math.min(currentIndex, newList.length - 1);
+            setCurrentIndex(nextIndex);
+            loadImage(newList[nextIndex], nextIndex);
+          } else {
+            setSelectedImage(null);
+            setImageUrl("");
+          }
+          return newList;
+        });
       }
     } catch (error) {
-      console.error("Error deleting image label:", error);
-      setMessage("Error deleting image label. Please try again!");
+      console.error("Error deleting image:", error);
+      setMessage("Error deleting image. Please try again!");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -543,11 +557,22 @@ const Label = forwardRef((props, sref) => {
 
   const fetchDatasets = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/dataset");
+      const storedUser = JSON.parse(localStorage.getItem("user"));
+      if (!storedUser || !storedUser.id) {
+        setMessage("Please login to label images");
+        return;
+      }
+      const response = await axios.get(`/api/dataset?userId=${storedUser.id}`);
       setDatasets(response.data);
+      if (response.data.length > 0) {
+        const dataset = response.data.find((d) => d._id === selectedDataset);
+        if (dataset) {
+          setSelectedDatasetName(dataset.name);
+        }
+      }
     } catch (error) {
-      console.error("Error fetching datasets:", error);
-      setMessage("Error fetching datasets!");
+      console.error("Error loading dataset list:", error);
+      setMessage("Error loading dataset list");
     }
   };
 
@@ -638,10 +663,46 @@ const Label = forwardRef((props, sref) => {
     setTimeout(() => setMessage(""), 3000);
   };
 
+  // Remove user's label from an image in 'Labeled Images' section
+  const handleDeleteUserLabelFromLabeledList = async (imageId) => {
+    if (!selectedDataset) {
+      setMessage("Please select a dataset first!");
+      return;
+    }
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    const email = storedUser?.email || "";
+    if (!email) {
+      setMessage("Không tìm thấy thông tin người dùng!");
+      return;
+    }
+    try {
+      const response = await axios.delete(
+        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}/label`,
+        {
+          data: { email },
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+      if (response.status === 200) {
+        // Hide image from current user's labeled images list
+        setLatestLabeled((prev) => prev.filter((img) => img._id !== imageId));
+        // Update label statistics
+        setStatsRefreshKey((prev) => prev + 1);
+        setMessage("");
+      }
+    } catch (error) {
+      console.error("Error removing user label from image:", error);
+      setMessage("Error removing label. Please try again!");
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
   console.log("latestLabeled", latestLabeled);
 
   return (
-    <div className="label-container">
+    <>
       <div className="main-content">
         <div className="label-section">
           {}
@@ -679,7 +740,7 @@ const Label = forwardRef((props, sref) => {
                 style={{ display: "flex", alignItems: "flex-start", gap: 32 }}
               >
                 <div>
-                  <img src={imageUrl} alt="Ảnh đang label" width="300" />
+                  <img src={imageUrl} alt="Image" width="300" />
                   <p>
                     <b>File:</b> {selectedImage?.filename}
                   </p>
@@ -748,6 +809,7 @@ const Label = forwardRef((props, sref) => {
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
+                  onFocus={() => setMessage("")}
                 />
                 <button
                   className="delete-labeled-button"
@@ -816,7 +878,7 @@ const Label = forwardRef((props, sref) => {
                   alt={`Labeled ${index}`}
                   className="recent-image"
                 />
-                {img.isCropped && <div className="cropped-badge">Đã crop</div>}
+                {img.isCropped && <div className="cropped-badge">Cropped</div>}
               </div>
               <div className="label-container">
                 <div className="input-wrapper">
@@ -850,7 +912,9 @@ const Label = forwardRef((props, sref) => {
                   </button>
                   <button
                     className="delete-icon-button"
-                    onClick={() => handleDeleteImageFromDataset(img._id)}
+                    onClick={() =>
+                      handleDeleteUserLabelFromLabeledList(img._id)
+                    }
                   >
                     <RiDeleteBinLine size={15} />
                   </button>
@@ -872,7 +936,7 @@ const Label = forwardRef((props, sref) => {
           </button>
         </div>
       </div>
-    </div>
+    </>
   );
 });
 

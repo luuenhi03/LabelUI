@@ -14,7 +14,7 @@ const UserMenu = ({ user, onLogout }) => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState(1); // 1: nhập mật khẩu, 2: nhập OTP
+  const [step, setStep] = useState(1); // 1: enter password, 2: enter OTP
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -27,7 +27,7 @@ const UserMenu = ({ user, onLogout }) => {
     setAvatar(user.avatar);
   }, [user.avatar]);
 
-  // Đóng menu khi click ra ngoài
+  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -41,19 +41,16 @@ const UserMenu = ({ user, onLogout }) => {
   const handleImageChange = (event) => {
     const file = event.target.files[0];
     if (file) {
-      // Kiểm tra xem file có phải là ảnh không
       if (!file.type.startsWith("image/")) {
-        alert("Vui lòng chọn file ảnh!");
+        alert("Please select an image file!");
         return;
       }
 
-      // Kiểm tra kích thước file (giới hạn 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert("Kích thước ảnh không được vượt quá 5MB!");
+        alert("Image size cannot exceed 5MB!");
         return;
       }
 
-      // Tạo URL để hiển thị ảnh preview
       const imageUrl = URL.createObjectURL(file);
       setPreviewImage({ file, url: imageUrl });
       setShowModal(true);
@@ -61,7 +58,7 @@ const UserMenu = ({ user, onLogout }) => {
   };
 
   const handleChangeAvatarClick = () => {
-    fileInputRef.current.value = null; // reset input
+    fileInputRef.current.value = null;
     fileInputRef.current.click();
   };
 
@@ -82,7 +79,7 @@ const UserMenu = ({ user, onLogout }) => {
       });
 
       if (!res.ok) {
-        setError("Có lỗi xảy ra khi upload ảnh. Vui lòng thử lại sau.");
+        setError("An error occurred. Please try again.");
         return;
       }
 
@@ -93,10 +90,10 @@ const UserMenu = ({ user, onLogout }) => {
       setShowModal(false);
       setPreviewImage(null);
       setOpen(false);
-      setSuccess("Ảnh đã được cập nhật thành công!");
+      setSuccess("Image updated successfully!");
       localStorage.setItem("user", JSON.stringify(updatedUser));
     } catch (error) {
-      setError("Có lỗi xảy ra khi upload ảnh. Vui lòng thử lại sau.");
+      setError("An error occurred. Please try again.");
     }
   };
 
@@ -104,7 +101,7 @@ const UserMenu = ({ user, onLogout }) => {
     setError("");
     setSuccess("");
     if (newPassword !== confirmPassword) {
-      setError("Mật khẩu mới và xác nhận không khớp!");
+      setError("New password and confirmation do not match!");
       return;
     }
     try {
@@ -115,22 +112,22 @@ const UserMenu = ({ user, onLogout }) => {
       });
       if (!res.ok) {
         const data = await res.json();
-        setError(data.message || "Mật khẩu hiện tại không đúng");
+        setError(data.message || "Current password is incorrect");
         return;
       }
-      // Gửi OTP
+      // Send OTP
       const otpRes = await fetch("/api/auth/send-otp-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: user.email }),
       });
       if (!otpRes.ok) {
-        setError("Không thể gửi OTP. Vui lòng thử lại.");
+        setError("Cannot send OTP. Please try again.");
         return;
       }
       setStep(2);
     } catch (err) {
-      setError("Có lỗi xảy ra. Vui lòng thử lại.");
+      setError("An error occurred. Please try again.");
     }
   };
 
@@ -145,10 +142,10 @@ const UserMenu = ({ user, onLogout }) => {
       });
       if (!res.ok) {
         const data = await res.json();
-        setError(data.message || "OTP không hợp lệ");
+        setError(data.message || "Invalid OTP");
         return;
       }
-      setSuccess("Đổi mật khẩu thành công!");
+      setSuccess("Password changed successfully!");
       setShowChangePassword(false);
       setCurrentPassword("");
       setNewPassword("");
@@ -156,7 +153,7 @@ const UserMenu = ({ user, onLogout }) => {
       setOtp("");
       setStep(1);
     } catch (err) {
-      setError("Có lỗi xảy ra. Vui lòng thử lại.");
+      setError("An error occurred. Please try again.");
     }
   };
 
@@ -164,7 +161,6 @@ const UserMenu = ({ user, onLogout }) => {
     setDeleteError("");
     setDeleteLoading(true);
     try {
-      // Kiểm tra mật khẩu trước khi xóa
       const checkRes = await fetch("/api/auth/check-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,25 +171,24 @@ const UserMenu = ({ user, onLogout }) => {
       });
       if (!checkRes.ok) {
         const data = await checkRes.json();
-        setDeleteError(data.message || "Mật khẩu không đúng");
+        setDeleteError(data.message || "Incorrect password");
         setDeleteLoading(false);
         return;
       }
-      // Gửi request xóa tài khoản
+
       const token = localStorage.getItem("token");
       const res = await axios.delete(`/api/auth/delete-account/${user.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 200) {
-        // Xóa localStorage, đăng xuất
         localStorage.removeItem("user");
         localStorage.removeItem("token");
         if (onLogout) onLogout();
       } else {
-        setDeleteError(res.data.message || "Lỗi xóa tài khoản");
+        setDeleteError(res.data.message || "Error deleting account");
       }
     } catch (err) {
-      setDeleteError(err.response?.data?.message || "Lỗi xóa tài khoản");
+      setDeleteError(err.response?.data?.message || "Error deleting account");
     } finally {
       setDeleteLoading(false);
     }
@@ -383,11 +378,11 @@ const UserMenu = ({ user, onLogout }) => {
       {showDeleteModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Xác nhận xóa tài khoản</h3>
+            <h3>Confirm Account Deletion</h3>
             <div style={{ margin: "16px 0" }}>
               <input
                 type="password"
-                placeholder="Nhập mật khẩu để xác nhận"
+                placeholder="Enter password to confirm"
                 value={deletePassword}
                 onChange={(e) => setDeletePassword(e.target.value)}
                 style={{
@@ -407,7 +402,7 @@ const UserMenu = ({ user, onLogout }) => {
                 onClick={handleDeleteAccount}
                 disabled={deleteLoading || !deletePassword}
               >
-                {deleteLoading ? "Đang xóa..." : "Xác nhận xóa"}
+                {deleteLoading ? "Deleting..." : "Confirm Delete"}
               </button>
               <button
                 className="cancel-btn"
@@ -417,7 +412,7 @@ const UserMenu = ({ user, onLogout }) => {
                   setDeleteError("");
                 }}
               >
-                Hủy bỏ
+                Cancel
               </button>
             </div>
           </div>

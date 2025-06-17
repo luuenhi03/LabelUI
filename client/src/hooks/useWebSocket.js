@@ -3,10 +3,8 @@ import WebSocketClient from "../utils/WebSocketClient";
 
 const useWebSocket = () => {
   useEffect(() => {
-    // Connect to WebSocket when component mounts
     WebSocketClient.connect();
 
-    // Cleanup: disconnect when component unmounts
     return () => {
       WebSocketClient.disconnect();
     };

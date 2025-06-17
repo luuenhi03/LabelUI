@@ -12,7 +12,7 @@
 .main-content {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  
   width: 100%;
   flex: 1;
   position: relative;
@@ -443,15 +443,18 @@
   margin: 0 auto;
 }
 
-.message {
-  font-size: 16px;
-  color: #666;
+.message, .error-message {
+  color: #c0392b !important;
+  background: #fdeaea !important;
+  border: 1.5px solid #f5c2c7 !important;
+  font-size: 18px;
+  font-weight: 500;
   padding: 16px 24px;
   border-radius: 8px;
-  background-color: #f8f8f8;
-  border: 1px solid #eee;
   width: 100%;
   text-align: center;
+  margin: 10px 0;
+  box-sizing: border-box;
 }
 
 .main-content {
@@ -461,10 +464,11 @@
 }
 
 .recent-labels {
-  width: 100%;
+  width: 99%;
   background: white;
   padding: 20px;
   border-radius: 8px;
+  
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -713,7 +717,7 @@
 .message.error {
   background-color: #ffebee;
   color: #c62828;
-  border: 1px solid #ffcdd2;
+  border: 1px solid #ffb3b3;
 }
 
 .message.success {

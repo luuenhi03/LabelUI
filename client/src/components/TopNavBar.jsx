@@ -3,7 +3,6 @@ import UserMenu from "./UserMenu";
 import "./TopNavBar.scss";
 
 export default function TopNavBar() {
-  // Lấy user từ localStorage
   const storedUser = JSON.parse(localStorage.getItem("user")) || {
     email: "user@gmail.com",
     avatar: null,

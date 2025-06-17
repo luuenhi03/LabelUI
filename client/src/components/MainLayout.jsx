@@ -15,14 +15,15 @@ export default function MainLayout({ children }) {
       })
         .then((res) => {
           if (!res.ok) {
-            // User không tồn tại hoặc token hết hạn
+            // User does not exist or token expired
             localStorage.removeItem("user");
             localStorage.removeItem("token");
             navigate("/login");
           }
         })
-        .catch(() => {
-          // Lỗi kết nối hoặc backend, cũng đăng xuất
+        .catch((error) => {
+          // Connection error or backend error, also logout
+          console.error("Error:", error);
           localStorage.removeItem("user");
           localStorage.removeItem("token");
           navigate("/login");

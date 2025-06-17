@@ -80,7 +80,6 @@ const CropImage = ({
       return;
     }
 
-    // Validate dataset ID
     if (!selectedDataset) {
       alert("Dataset ID not found. Please try again.");
       return;
@@ -99,7 +98,7 @@ const CropImage = ({
         formData.append("labeledBy[]", "user");
         formData.append("labeledAt[]", new Date().toISOString());
         formData.append("isCropped[]", "true");
-        // Add original image info if available
+
         if (selectedImage) {
           formData.append("originalImageId[]", selectedImage._id);
           formData.append("originalImageName[]", selectedImage.filename);
@@ -142,7 +141,6 @@ const CropImage = ({
         throw uploadError;
       }
 
-      // Xóa ảnh gốc sau khi đã crop và upload thành công
       if (selectedImage) {
         try {
           await axios.delete(
@@ -151,16 +149,12 @@ const CropImage = ({
           console.log("Original image deleted:", selectedImage.name);
         } catch (error) {
           console.error("Error deleting original image:", error);
-          // Tiếp tục xử lý ngay cả khi không xóa được ảnh gốc
         }
       }
 
-      // Reset state và gọi callback
       setCroppedImages([]);
       if (onUploadComplete) {
-        // Chuyển đổi dữ liệu ảnh đã upload thành định dạng phù hợp
         const uploadedImages = uploadedDataArray.map((response) => {
-          // Nếu response là một mảng, lấy phần tử đầu tiên
           const imageData = Array.isArray(response) ? response[0] : response;
           return {
             _id: imageData.fileId || imageData._id,
@@ -179,7 +173,6 @@ const CropImage = ({
         onUploadComplete(uploadedImages);
       }
 
-      // Update image list
       const updatedImageList = imageList.filter(
         (img) => img._id !== selectedImage._id
       );

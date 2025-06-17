@@ -14,19 +14,31 @@ const DatasetStats = () => {
   const [unlabeled, setUnlabeled] = useState(0);
   const [consistentImages, setConsistentImages] = useState([]);
   const [inconsistentImages, setInconsistentImages] = useState([]);
+  const [showUnlabeledList, setShowUnlabeledList] = useState(false);
+  const [unlabeledImagesList, setUnlabeledImagesList] = useState([]);
+  const [showLabeledList, setShowLabeledList] = useState(false);
+  const [labeledImagesList, setLabeledImagesList] = useState([]);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         setLoading(true);
         setError(null);
+
+        const storedUser = JSON.parse(localStorage.getItem("user"));
+        if (!storedUser || !storedUser.id) {
+          setError("Please login to view dataset information");
+          return;
+        }
+
         console.log("Fetching dataset with ID:", id);
-        const res = await axios.get(`/api/dataset/${id}`);
+        const res = await axios.get(
+          `/api/dataset/${id}?userId=${storedUser.id}`
+        );
         console.log("Dataset response:", res.data);
         const ds = res.data;
         setDataset(ds);
 
-        // Calculate basic stats
         const totalImages = ds.images ? ds.images.length : 0;
         const labeledImages = ds.images
           ? ds.images.filter((img) => img.label && img.label.trim() !== "")
@@ -36,27 +48,48 @@ const DatasetStats = () => {
         setLabeled(labeledImages);
         setUnlabeled(totalImages - labeledImages);
 
-        // Group images by label consistency
+        const unlabeledImagesArr = ds.images
+          ? ds.images.filter((img) => !img.label || img.label.trim() === "")
+          : [];
+        setUnlabeledImagesList(unlabeledImagesArr);
+
         const consistent = [];
         const inconsistent = [];
 
         ds.images.forEach((img) => {
           if (!img.labels || img.labels.length === 0) return;
 
-          // Get unique labels
-          const uniqueLabels = new Set(img.labels.map((l) => l.label));
+          const latestLabels = {};
+          img.labels.forEach((label) => {
+            const userId = label.labeledBy;
+            if (
+              !latestLabels[userId] ||
+              new Date(label.labeledAt) >
+                new Date(latestLabels[userId].labeledAt)
+            ) {
+              latestLabels[userId] = label;
+            }
+          });
+          const uniqueLabels = new Set(
+            Object.values(latestLabels).map((l) => l.label)
+          );
+
+          img.latestLabels = latestLabels;
 
           if (uniqueLabels.size === 1) {
-            // All labels are the same
             consistent.push(img);
           } else {
-            // Multiple different labels
             inconsistent.push(img);
           }
         });
 
         setConsistentImages(consistent);
         setInconsistentImages(inconsistent);
+
+        const labeledImagesArr = ds.images
+          ? ds.images.filter((img) => img.label && img.label.trim() !== "")
+          : [];
+        setLabeledImagesList(labeledImagesArr);
       } catch (err) {
         console.error("Error fetching dataset stats:", err);
         console.error("Error details:", {
@@ -65,7 +98,9 @@ const DatasetStats = () => {
           status: err.response?.status,
           config: err.config,
         });
-        setError("Failed to load dataset stats");
+        setError(
+          err.response?.data?.message || "Unable to load dataset information"
+        );
       } finally {
         setLoading(false);
       }
@@ -83,21 +118,208 @@ const DatasetStats = () => {
 
   return (
     <div className="dataset-stats-detail-container">
-      <h1 className="dataset-title">{dataset.name}</h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          marginBottom: "20px",
+          gap: "20px",
+        }}
+      >
+        <button
+          onClick={() => navigate("/dataset")}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "#fff",
+            border: "1px solid #666",
+            color: "#666",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "all 0.2s",
+            width: "40px",
+            height: "40px",
+          }}
+          onMouseOver={(e) => {
+            e.target.style.backgroundColor = "#f5f5f5";
+          }}
+          onMouseOut={(e) => {
+            e.target.style.backgroundColor = "#fff";
+          }}
+        >
+          ←
+        </button>
+        <h1 className="dataset-title" style={{ margin: 0 }}>
+          {dataset.name}
+        </h1>
+      </div>
       <div className="stats-box-row">
-        <div className="stats-box small">
-          <div className="stats-label">Unlabeled images</div>
+        <div
+          className="stats-box small"
+          onClick={() => setShowUnlabeledList(true)}
+          style={{ cursor: "pointer" }}
+        >
+          <div className="stats-label">Unlabeled Images</div>
           <div className="stats-value">{unlabeled}</div>
         </div>
         <div className="stats-box large">
-          <div className="stats-label">Total images</div>
+          <div className="stats-label">Total Images</div>
           <div className="stats-value">{total}</div>
         </div>
-        <div className="stats-box small">
-          <div className="stats-label">Labeled images</div>
+        <div
+          className="stats-box small"
+          onClick={() => setShowLabeledList(true)}
+          style={{ cursor: "pointer" }}
+        >
+          <div className="stats-label">Labeled Images</div>
           <div className="stats-value">{labeled}</div>
         </div>
       </div>
+
+      {showUnlabeledList && (
+        <div
+          className="unlabeled-modal"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.3)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            className="unlabeled-modal-content"
+            style={{
+              background: "#fff",
+              padding: 24,
+              borderRadius: 8,
+              minWidth: 320,
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+          >
+            <h3>Unlabeled Images ({unlabeledImagesList.length})</h3>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {unlabeledImagesList.map((img) => (
+                <li
+                  key={img._id}
+                  style={{
+                    cursor: "pointer",
+                    color: "#007bff",
+                    padding: "6px 0",
+                    borderBottom: "1px solid #eee",
+                  }}
+                  onClick={() => {
+                    handleImageClick(img._id);
+                    setShowUnlabeledList(false);
+                  }}
+                >
+                  {img.filename}
+                </li>
+              ))}
+            </ul>
+            <button
+              style={{
+                marginTop: 16,
+                padding: "8px 24px",
+                background: "#007bff",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                fontWeight: "bold",
+                fontSize: "16px",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                transition: "background 0.2s",
+              }}
+              onMouseOver={(e) => (e.target.style.background = "#0056b3")}
+              onMouseOut={(e) => (e.target.style.background = "#007bff")}
+              onClick={() => setShowUnlabeledList(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLabeledList && (
+        <div
+          className="labeled-modal"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.3)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            className="labeled-modal-content"
+            style={{
+              background: "#fff",
+              padding: 24,
+              borderRadius: 8,
+              minWidth: 320,
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+          >
+            <h3>Labeled Images ({labeledImagesList.length})</h3>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {labeledImagesList.map((img) => (
+                <li
+                  key={img._id}
+                  style={{
+                    cursor: "pointer",
+                    color: "#007bff",
+                    padding: "6px 0",
+                    borderBottom: "1px solid #eee",
+                  }}
+                  onClick={() => {
+                    handleImageClick(img._id);
+                    setShowLabeledList(false);
+                  }}
+                >
+                  {img.filename}
+                </li>
+              ))}
+            </ul>
+            <button
+              style={{
+                marginTop: 16,
+                padding: "8px 24px",
+                background: "#007bff",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                fontWeight: "bold",
+                fontSize: "16px",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                transition: "background 0.2s",
+              }}
+              onMouseOver={(e) => (e.target.style.background = "#0056b3")}
+              onMouseOut={(e) => (e.target.style.background = "#007bff")}
+              onClick={() => setShowLabeledList(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Consistent Images Section */}
       <div className="image-group-section">
@@ -131,9 +353,9 @@ const DatasetStats = () => {
               <div className="image-info">
                 <span className="image-filename">{img.filename}</span>
                 <div className="image-labels">
-                  {Array.from(new Set(img.labels.map((l) => l.label))).join(
-                    ", "
-                  )}
+                  {Array.from(
+                    new Set(Object.values(img.latestLabels).map((l) => l.label))
+                  ).join(", ")}
                 </div>
               </div>
             </div>

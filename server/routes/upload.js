@@ -55,11 +55,6 @@ router.post("/datasets", async (req, res) => {
       return res.status(400).json({ message: "Dataset already exists" });
     }
 
-    // const uploadPath = path.join(__dirname, "../uploads", name);
-    // if (!fs.existsSync(uploadPath)) {
-    //   fs.mkdirSync(uploadPath, { recursive: true });
-    // }
-
     const dataset = new Dataset({ name });
     await dataset.save();
 
@@ -147,6 +142,7 @@ router.delete("/images/:imageId", async (req, res) => {
 });
 
 router.post("/upload", upload.single("image"), async (req, res) => {
+  const startTime = performance.now();
   try {
     const { datasetName } = req.body;
 
@@ -174,9 +170,24 @@ router.post("/upload", upload.single("image"), async (req, res) => {
     });
 
     await image.save();
-    res.status(201).json(image);
+    const endTime = performance.now();
+    const executionTime = endTime - startTime;
+    console.log(`Upload time: ${executionTime.toFixed(2)}ms`);
+    res.status(201).json({
+      image,
+      executionTime: executionTime.toFixed(2),
+    });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    const endTime = performance.now();
+    const executionTime = endTime - startTime;
+    console.log(
+      `Upload failed after ${executionTime.toFixed(2)}ms:`,
+      error.message
+    );
+    res.status(400).json({
+      message: error.message,
+      executionTime: executionTime.toFixed(2),
+    });
   }
 });
 
@@ -187,8 +198,14 @@ router.get("/image/:imageId/label-stats", async (req, res) => {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    const latestLabels = {};
-    if (image.labels && Array.isArray(image.labels)) {
+    let stats = [];
+
+    if (
+      image.labels &&
+      Array.isArray(image.labels) &&
+      image.labels.length > 0
+    ) {
+      const latestLabels = {};
       image.labels.forEach((label) => {
         const userId = label.labeledBy;
         if (
@@ -198,19 +215,21 @@ router.get("/image/:imageId/label-stats", async (req, res) => {
           latestLabels[userId] = label;
         }
       });
+
+      const labelCounts = {};
+      Object.values(latestLabels).forEach((label) => {
+        if (label.label) {
+          labelCounts[label.label] = (labelCounts[label.label] || 0) + 1;
+        }
+      });
+
+      stats = Object.entries(labelCounts).map(([label, count]) => ({
+        label,
+        count,
+      }));
+    } else if (image.label) {
+      stats = [{ label: image.label, count: 1 }];
     }
-
-    const labelCounts = {};
-    Object.values(latestLabels).forEach((label) => {
-      if (label.label) {
-        labelCounts[label.label] = (labelCounts[label.label] || 0) + 1;
-      }
-    });
-
-    const stats = Object.entries(labelCounts).map(([label, count]) => ({
-      label,
-      count,
-    }));
 
     res.json(stats);
   } catch (error) {
