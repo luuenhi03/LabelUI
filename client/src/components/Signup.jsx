@@ -42,14 +42,12 @@ const Signup = () => {
       return;
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError("Invalid email format!");
       return;
     }
 
-    // Validate password length
     if (password.length < 6) {
       setError("Password must be at least 6 characters!");
       return;

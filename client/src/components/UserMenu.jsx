@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./UserMenu.css";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 const UserMenu = ({ user, onLogout }) => {
   const [open, setOpen] = useState(false);
   const menuRef = useRef();
   const fileInputRef = useRef();
+  const navigate = useNavigate();
   const [previewImage, setPreviewImage] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [avatar, setAvatar] = useState(user.avatar);
@@ -21,13 +23,30 @@ const UserMenu = ({ user, onLogout }) => {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // Update avatar when user prop changes
+  useEffect(() => {
+    checkAdminRole();
+  }, []);
+
+  const checkAdminRole = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await axios.get("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setIsAdmin(response.data.role === "admin");
+    } catch (error) {
+      console.error("Error checking admin role:", error);
+    }
+  };
+
   useEffect(() => {
     setAvatar(user.avatar);
   }, [user.avatar]);
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -115,7 +134,7 @@ const UserMenu = ({ user, onLogout }) => {
         setError(data.message || "Current password is incorrect");
         return;
       }
-      // Send OTP
+
       const otpRes = await fetch("/api/auth/send-otp-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -194,6 +213,11 @@ const UserMenu = ({ user, onLogout }) => {
     }
   };
 
+  const handleManageUsers = () => {
+    setOpen(false);
+    navigate("/admin/users");
+  };
+
   return (
     <div className="user-menu-container" ref={menuRef}>
       <div className="avatar" onClick={() => setOpen(!open)}>
@@ -212,6 +236,11 @@ const UserMenu = ({ user, onLogout }) => {
           <div className="user-email">
             <b>{user.email}</b>
           </div>
+          {isAdmin && (
+            <div className="user-menu-item" onClick={handleManageUsers}>
+              Manage Users
+            </div>
+          )}
           <div className="user-menu-item" onClick={handleChangeAvatarClick}>
             Change avatar
           </div>

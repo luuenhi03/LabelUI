@@ -8,6 +8,7 @@ import DatasetStats from "./components/DatasetStats";
 import MainLayout from "./components/MainLayout";
 import DatasetPage from "./components/DatasetPage";
 import CarColorPrediction from "./components/CarColorPrediction";
+import UserManagement from "./components/UserManagement";
 
 function App() {
   return (
@@ -43,6 +44,14 @@ function App() {
         element={
           <MainLayout>
             <CarColorPrediction />
+          </MainLayout>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <MainLayout>
+            <UserManagement />
           </MainLayout>
         }
       />

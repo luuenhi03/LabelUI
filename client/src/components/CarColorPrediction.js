@@ -8,7 +8,6 @@ const CarColorPrediction = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // Server B URL (change according to server IP address)
   const serverBUrl = "http://localhost:5001";
 
   const handleFileSelect = (event) => {
@@ -18,12 +17,23 @@ const CarColorPrediction = () => {
       setError(null);
       setResult(null);
 
-      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreview(e.target.result);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleReset = () => {
+    setSelectedFile(null);
+    setPreview(null);
+    setResult(null);
+    setError(null);
+
+    const fileInput = document.getElementById("image-input");
+    if (fileInput) {
+      fileInput.value = "";
     }
   };
 
@@ -86,8 +96,8 @@ const CarColorPrediction = () => {
         </div>
       )}
 
-      {selectedFile && (
-        <div className="predict-section">
+      <div className="button-group">
+        {selectedFile && (
           <button
             className="predict-button"
             onClick={handlePredict}
@@ -95,8 +105,13 @@ const CarColorPrediction = () => {
           >
             Predict
           </button>
-        </div>
-      )}
+        )}
+        {(selectedFile || result || error) && (
+          <button className="exit-button" onClick={handleReset}>
+            Exit
+          </button>
+        )}
+      </div>
 
       {loading && (
         <div className="loading-section">

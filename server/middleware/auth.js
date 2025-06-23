@@ -1,7 +1,9 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const User = require("../models/User");
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "No token provided" });
@@ -9,11 +11,53 @@ const auth = (req, res, next) => {
   const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { _id: decoded.userId };
+
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    req.user = user;
     next();
   } catch (err) {
     res.status(401).json({ message: "Invalid token" });
   }
 };
 
-module.exports = auth;
+const isAdmin = async (req, res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin role required." });
+  }
+  next();
+};
+
+const createDefaultAdmin = async () => {
+  try {
+    const adminEmail = "admin@labelui.com";
+    const adminPassword = "admin123";
+
+    const existingAdmin = await User.findOne({ email: adminEmail });
+    if (existingAdmin) {
+      console.log("Admin account already exists");
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(adminPassword, salt);
+
+    const admin = new User({
+      email: adminEmail,
+      password: hashedPassword,
+      role: "admin",
+      isVerified: true,
+    });
+
+    await admin.save();
+    console.log("Create admin account successfully");
+  } catch (error) {
+    console.error("Error creating admin account:", error);
+  }
+};
+
+module.exports = { auth, isAdmin, createDefaultAdmin };

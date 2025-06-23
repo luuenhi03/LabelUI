@@ -15,14 +15,12 @@ export default function MainLayout({ children }) {
       })
         .then((res) => {
           if (!res.ok) {
-            // User does not exist or token expired
             localStorage.removeItem("user");
             localStorage.removeItem("token");
             navigate("/login");
           }
         })
         .catch((error) => {
-          // Connection error or backend error, also logout
           console.error("Error:", error);
           localStorage.removeItem("user");
           localStorage.removeItem("token");

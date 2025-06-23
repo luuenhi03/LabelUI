@@ -9,7 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const Otp = require("../models/Otp");
 const multer = require("multer");
-const authMiddleware = require("../middleware/auth");
+const { auth } = require("../middleware/auth");
 const LabeledImage = require("../models/LabeledImage");
 
 const checkDatabaseConnection = () => {
@@ -268,6 +268,7 @@ router.post("/login", async (req, res) => {
         email: user.email,
         isVerified: user.isVerified,
         avatar: user.avatar,
+        role: user.role,
       },
     });
   } catch (error) {
@@ -321,7 +322,7 @@ router.post(
   }
 );
 
-router.delete("/delete-account/:id", authMiddleware, async (req, res) => {
+router.delete("/delete-account/:id", auth, async (req, res) => {
   const userIdToDelete = req.params.id;
   if (req.user._id !== userIdToDelete) {
     return res.status(403).json({ message: "Forbidden" });
@@ -336,7 +337,7 @@ router.delete("/delete-account/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/me", authMiddleware, async (req, res) => {
+router.get("/me", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -345,6 +346,7 @@ router.get("/me", authMiddleware, async (req, res) => {
       email: user.email,
       isVerified: user.isVerified,
       avatar: user.avatar,
+      role: user.role,
     });
   } catch (error) {
     res.status(500).json({ message: "Error fetching user" });

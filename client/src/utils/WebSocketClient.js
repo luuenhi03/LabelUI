@@ -8,7 +8,6 @@ class WebSocketClient {
 
   connect() {
     try {
-      // Connect to the WebSocket server on port 5000
       this.ws = new WebSocket("ws://localhost:5000/ws");
 
       this.ws.onopen = () => {
@@ -20,7 +19,7 @@ class WebSocketClient {
         try {
           const data = JSON.parse(event.data);
           console.log("Received message:", data);
-          // Handle different message types here
+
           if (data.type === "connection") {
             console.log(data.message);
           }
@@ -57,7 +56,6 @@ class WebSocketClient {
 
   send(message) {
     if (this.ws && this.ws.readyState === 1) {
-      // WebSocket.OPEN = 1
       this.ws.send(JSON.stringify(message));
     } else {
       console.error("WebSocket is not connected");

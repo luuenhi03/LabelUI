@@ -5,35 +5,32 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const WebSocket = require("ws");
+const { createDefaultAdmin } = require("./middleware/auth");
 const authRoutes = require("./routes/auth");
 const uploadRoutes = require("./routes/upload");
 const datasetRoutes = require("./routes/dataset");
+const adminRoutes = require("./routes/admin");
 const Grid = require("gridfs-stream");
-// const labeledImageRoutes = require("./routes/labeledImage");
 
 const app = express();
 const server = http.createServer(app);
 
-// WebSocket server setup
 const wss = new WebSocket.Server({
   server,
   path: "/ws",
 });
 
-// WebSocket connection handler
 wss.on("connection", (ws) => {
   console.log("New WebSocket connection established");
 
   ws.on("message", (message) => {
     console.log("Received:", message.toString());
-    // Handle incoming messages here
   });
 
   ws.on("close", () => {
     console.log("Client disconnected");
   });
 
-  // Send a welcome message
   ws.send(
     JSON.stringify({
       type: "connection",
@@ -42,17 +39,14 @@ wss.on("connection", (ws) => {
   );
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-// Serve static files from public/avatars for avatar images
+
 app.use("/avatars", express.static(path.join(__dirname, "public/avatars")));
 
-// MongoDB Connection
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://localhost:27017/label_db";
 console.log("Connecting to MongoDB:", MONGODB_URI);
@@ -64,18 +58,19 @@ conn.once("open", () => {
   gfs = Grid(conn.db, mongoose.mongo);
   gfs.collection("uploads");
   console.log("Successfully connected to MongoDB and initialized GridFS");
+
+  createDefaultAdmin();
 });
 
-// Routes
-app.use("/api/auth", require("./routes/auth"));
+app.use("/api/auth", authRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/dataset", datasetRoutes);
+app.use("/api/admin", adminRoutes);
 
-// Add route to serve images from GridFS - must be before dataset routes
 app.get("/api/dataset/image/:fileId", async (req, res) => {
   try {
     console.log("Attempting to serve image with fileId:", req.params.fileId);
 
-    // Check if fileId is valid
     if (!mongoose.Types.ObjectId.isValid(req.params.fileId)) {
       console.error("Invalid fileId format:", req.params.fileId);
       return res.status(400).json({ message: "Invalid fileId format" });
@@ -92,7 +87,6 @@ app.get("/api/dataset/image/:fileId", async (req, res) => {
       return res.status(404).json({ message: "File not found in GridFS" });
     }
 
-    // Check if file is an image
     if (!file.contentType || !file.contentType.startsWith("image/")) {
       console.error("File is not an image:", file.contentType);
       return res.status(400).json({ message: "File is not an image" });
@@ -114,10 +108,6 @@ app.get("/api/dataset/image/:fileId", async (req, res) => {
   }
 });
 
-app.use("/api/dataset", datasetRoutes);
-// app.use("/api/labeled-images", labeledImageRoutes);
-
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -125,7 +115,6 @@ app.use((req, res) => {
   });
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Global Error Handler:", {
     message: err.message,
@@ -161,5 +150,4 @@ server.listen(PORT, () => {
   console.log(`WebSocket server is running on ws://localhost:${PORT}/ws`);
 });
 
-// Export gfs if needed in other files
 module.exports = { gfs };

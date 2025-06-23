@@ -216,12 +216,10 @@ router.get("/", async (req, res) => {
     let query = {};
 
     if (userId) {
-      // Get all public datasets and private datasets owned by the user
       query = {
         $or: [{ isPrivate: false }, { userId: userId }],
       };
     } else {
-      // Get only public datasets
       query = { isPrivate: false };
     }
 
@@ -920,7 +918,6 @@ router.get("/:id", checkMongoConnection, async (req, res) => {
       });
     }
 
-    // Check access permission
     const userId = req.query.userId;
     if (
       dataset.isPrivate &&

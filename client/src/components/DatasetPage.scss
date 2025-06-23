@@ -1,0 +1,72 @@
+.dataset-page {
+  min-height: 100vh;
+  background: #f8f9fa;
+  display: flex;
+  justify-content: center;
+  padding: 40px;
+
+  .dataset-card {
+    background: white;
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+    h1 {
+      font-size: 28px;
+      color: #1a1a1a;
+      margin: 0 0 40px;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .loading-state {
+      text-align: center;
+      color: #666;
+      font-size: 16px;
+    }
+
+    .error-state {
+      text-align: center;
+      color: #dc3545;
+      font-size: 16px;
+      background: #f8d7da;
+      padding: 12px;
+      border-radius: 6px;
+    }
+
+    .dataset-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+
+      .dataset-item {
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        transition: all 0.2s ease;
+
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+          font-size: 24px;
+          color: #1a1a1a;
+          margin: 0 0 8px;
+          font-weight: 500;
+        }
+
+        p {
+          font-size: 14px;
+          color: #666;
+          margin: 0;
+        }
+      }
+    }
+  }
+} 
