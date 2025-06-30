@@ -187,6 +187,7 @@ const Label = forwardRef((props, sref) => {
 
   const loadImageList = async () => {
     if (!selectedDataset) {
+      console.log("No dataset selected");
       setImageList([]);
       setImageUrl("");
       setSelectedImage(null);
@@ -194,13 +195,40 @@ const Label = forwardRef((props, sref) => {
       return;
     }
     try {
+      console.log("Loading images for dataset:", selectedDataset);
       const response = await axios.get(
-        `/api/dataset/${selectedDataset}/images`
+        `/api/dataset/${selectedDataset}/images?type=all`
       );
+      console.log("Response data:", response.data);
+
+      if (!response.data) {
+        console.error("No data in response");
+        setMessage("Error: No data received from server");
+        return;
+      }
+
+      if (!Array.isArray(response.data)) {
+        console.error("Response data is not an array:", response.data);
+        setMessage("Error: Invalid data format from server");
+        return;
+      }
+
       setImageList(response.data);
+      setTotalImages(response.data.length);
+      setMessage("");
+
+      // If we have images and no image is selected, load the first one
+      if (response.data.length > 0 && !selectedImage) {
+        loadImage(response.data[0], 0);
+      }
     } catch (error) {
       console.error("Error loading image list:", error);
+      console.error("Error details:", error.response?.data);
       setImageList([]);
+      setMessage(
+        error.response?.data?.message ||
+          "Error loading images. Please try again!"
+      );
     }
   };
 
@@ -270,15 +298,16 @@ const Label = forwardRef((props, sref) => {
     if (!selectedImage || !label) return;
 
     try {
-      await axios.post(
-        `/api/dataset/${selectedDataset}/images/${selectedImage._id}/label`,
+      await axios.put(
+        `/api/dataset/${selectedDataset}/images/${selectedImage._id}`,
         {
           label,
-          userId: storedUser.id,
+          labeledBy: storedUser.id,
         }
       );
 
       loadLabeledImages(pageIndex);
+      setLabel("");
       handleNextImage();
     } catch (error) {
       console.error("Error saving label:", error);
@@ -323,10 +352,11 @@ const Label = forwardRef((props, sref) => {
   const loadLabeledImages = async (page = 0) => {
     try {
       const response = await axios.get(
-        `/api/dataset/${selectedDataset}/labeled-images?page=${page}`
+        `/api/dataset/${selectedDataset}/labeled?page=${page}`
       );
-      setAllLabeledImages(response.data.images);
-      setTotalImages(response.data.total);
+      setLatestLabeled(response.data.images);
+      setAllLabeledImages(response.data.total);
+      setPageIndex(page);
     } catch (error) {
       console.error("Error loading labeled images:", error);
     }
@@ -380,7 +410,6 @@ const Label = forwardRef((props, sref) => {
     try {
       const storedUser = JSON.parse(localStorage.getItem("user"));
       if (!storedUser || !storedUser.id) {
-        setMessage("Please login to label images");
         return;
       }
       const response = await axios.get(`/api/dataset?userId=${storedUser.id}`);
@@ -426,16 +455,8 @@ const Label = forwardRef((props, sref) => {
 
   const handleLogout = () => {
     localStorage.removeItem("selectedDataset");
-
     navigate("/login");
   };
-
-  const chartData = [
-    { label: "Nhãn 1", count: 10 },
-    { label: "Nhãn 2", count: 5 },
-    { label: "Nhãn 3", count: 2 },
-  ];
-  const userCount = 4;
 
   const handleResetLabel = async (imageId) => {
     try {

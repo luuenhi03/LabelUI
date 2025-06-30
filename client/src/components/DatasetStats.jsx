@@ -39,24 +39,29 @@ const DatasetStats = () => {
         const ds = res.data;
         setDataset(ds);
 
-        const totalImages = ds.images ? ds.images.length : 0;
-        const labeledImages = ds.images
-          ? ds.images.filter((img) => img.label && img.label.trim() !== "")
-              .length
-          : 0;
-        setTotal(totalImages);
-        setLabeled(labeledImages);
-        setUnlabeled(totalImages - labeledImages);
+        // Lấy danh sách ảnh chưa gán nhãn
+        const unlabeledRes = await axios.get(
+          `/api/dataset/${id}/images?type=unlabeled`
+        );
+        setUnlabeledImagesList(unlabeledRes.data);
+        setUnlabeled(unlabeledRes.data.length);
 
-        const unlabeledImagesArr = ds.images
-          ? ds.images.filter((img) => !img.label || img.label.trim() === "")
-          : [];
-        setUnlabeledImagesList(unlabeledImagesArr);
+        // Lấy danh sách ảnh đã gán nhãn
+        const labeledRes = await axios.get(
+          `/api/dataset/${id}/images?type=labeled`
+        );
+        setLabeledImagesList(labeledRes.data);
+        setLabeled(labeledRes.data.length);
 
+        // Lấy tổng số ảnh
+        const totalRes = await axios.get(`/api/dataset/${id}/images?type=all`);
+        setTotal(totalRes.data.length);
+
+        // Xử lý thống kê nhãn
         const consistent = [];
         const inconsistent = [];
 
-        ds.images.forEach((img) => {
+        labeledRes.data.forEach((img) => {
           if (!img.labels || img.labels.length === 0) return;
 
           const latestLabels = {};
@@ -85,11 +90,6 @@ const DatasetStats = () => {
 
         setConsistentImages(consistent);
         setInconsistentImages(inconsistent);
-
-        const labeledImagesArr = ds.images
-          ? ds.images.filter((img) => img.label && img.label.trim() !== "")
-          : [];
-        setLabeledImagesList(labeledImagesArr);
       } catch (err) {
         console.error("Error fetching dataset stats:", err);
         console.error("Error details:", {
@@ -164,10 +164,6 @@ const DatasetStats = () => {
         >
           <div className="stats-label">Unlabeled Images</div>
           <div className="stats-value">{unlabeled}</div>
-        </div>
-        <div className="stats-box large">
-          <div className="stats-label">Total Images</div>
-          <div className="stats-value">{total}</div>
         </div>
         <div
           className="stats-box small"
