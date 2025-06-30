@@ -12,7 +12,6 @@ const User = require("../models/User");
 const Image = require("../models/Image");
 const jwt = require("jsonwebtoken");
 
-// Authentication middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -308,24 +307,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", authenticateToken, checkDatasetExists, async (req, res) => {
-  try {
-    if (!req.body.name || !req.body.name.trim()) {
-      return res.status(400).json({ message: "Dataset name cannot be empty" });
-    }
-
-    const dataset = await Dataset.findByIdAndUpdate(
-      req.params.id,
-      { name: req.body.name.trim() },
-      { new: true }
-    );
-    res.json(dataset);
-  } catch (error) {
-    console.error("Error updating dataset:", error);
-    res.status(500).json({ message: "Error updating dataset" });
-  }
-});
-
 router.post(
   "/:id/upload",
   authenticateToken,
@@ -389,7 +370,17 @@ router.get(
       if (!dataset) {
         return res.status(404).json({ message: "Dataset not found" });
       }
-      res.json(dataset.images || []);
+
+      const type = req.query.type || "all";
+      let images = dataset.images || [];
+
+      if (type === "unlabeled") {
+        images = images.filter((img) => !img.label || img.label.trim() === "");
+      } else if (type === "labeled") {
+        images = images.filter((img) => img.label && img.label.trim() !== "");
+      }
+
+      res.json(images);
     } catch (error) {
       console.error("Error fetching images:", error);
       res.status(500).json({ message: "Error fetching image list" });
