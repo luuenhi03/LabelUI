@@ -40,7 +40,7 @@ function App() {
         }
       />
       <Route
-        path="/modelling"
+        path="/color-detection"
         element={
           <MainLayout>
             <CarColorPrediction />

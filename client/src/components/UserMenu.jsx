@@ -16,7 +16,7 @@ const UserMenu = ({ user, onLogout }) => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState(1); // 1: enter password, 2: enter OTP
+  const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -90,29 +90,27 @@ const UserMenu = ({ user, onLogout }) => {
     try {
       const formData = new FormData();
       formData.append("avatar", previewImage.file);
-      formData.append("email", user.email);
 
-      const res = await fetch("/api/auth/upload-avatar", {
-        method: "POST",
-        body: formData,
+      const token = localStorage.getItem("token");
+      const res = await axios.post("/api/auth/upload-avatar", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
       });
 
-      if (!res.ok) {
-        setError("An error occurred. Please try again.");
-        return;
-      }
-
-      const data = await res.json();
-      const updatedUser = { ...user, avatar: data.avatar };
-      setAvatar(data.avatar);
-      user.avatar = data.avatar;
+      const updatedUser = { ...user, avatar: res.data.avatarUrl };
+      setAvatar(res.data.avatarUrl);
+      user.avatar = res.data.avatarUrl;
       setShowModal(false);
       setPreviewImage(null);
       setOpen(false);
       setSuccess("Image updated successfully!");
       localStorage.setItem("user", JSON.stringify(updatedUser));
     } catch (error) {
-      setError("An error occurred. Please try again.");
+      setError(
+        error.response?.data?.message || "An error occurred. Please try again."
+      );
     }
   };
 
@@ -222,7 +220,19 @@ const UserMenu = ({ user, onLogout }) => {
     <div className="user-menu-container" ref={menuRef}>
       <div className="avatar" onClick={() => setOpen(!open)}>
         {avatar ? (
-          <img src={avatar} alt="avatar" className="avatar-img" />
+          <img
+            src={
+              avatar.startsWith("http")
+                ? avatar
+                : `http://localhost:5000${avatar}`
+            }
+            alt="avatar"
+            className="avatar-img"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = "/default-avatar.png";
+            }}
+          />
         ) : (
           <img
             src="/default-avatar.png"
@@ -304,11 +314,11 @@ const UserMenu = ({ user, onLogout }) => {
       {showChangePassword && (
         <div className="modal-overlay">
           <div className="modal-content change-password-modal">
-            <h3 className="modal-title">Change Password</h3>
+            <h3>Change Password</h3>
             {step === 1 ? (
               <>
-                <div className="form-group">
-                  <label>Current Password</label>
+                <div>
+                  <div>Current Password</div>
                   <input
                     type="password"
                     value={currentPassword}
@@ -318,8 +328,8 @@ const UserMenu = ({ user, onLogout }) => {
                     }}
                   />
                 </div>
-                <div className="form-group">
-                  <label>New Password</label>
+                <div>
+                  <div>New Password</div>
                   <input
                     type="password"
                     value={newPassword}
@@ -329,8 +339,8 @@ const UserMenu = ({ user, onLogout }) => {
                     }}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Confirm New Password</label>
+                <div>
+                  <div>Confirm New Password</div>
                   <input
                     type="password"
                     value={confirmPassword}
@@ -340,9 +350,7 @@ const UserMenu = ({ user, onLogout }) => {
                     }}
                   />
                 </div>
-                {error && (
-                  <div style={{ color: "red", marginTop: 8 }}>{error}</div>
-                )}
+                {error && <div className="error-message">{error}</div>}
                 <div className="modal-btn-row">
                   <button onClick={handleChangePassword} className="save-btn">
                     Confirm
@@ -365,20 +373,16 @@ const UserMenu = ({ user, onLogout }) => {
               </>
             ) : (
               <>
-                <div className="form-group">
-                  <label>Enter OTP</label>
+                <div>
+                  <div>Enter OTP</div>
                   <input
                     type="text"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
                   />
                 </div>
-                {error && (
-                  <div style={{ color: "red", marginTop: 8 }}>{error}</div>
-                )}
-                {success && (
-                  <div style={{ color: "green", marginTop: 8 }}>{success}</div>
-                )}
+                {error && <div className="error-message">{error}</div>}
+                {success && <div className="success-message">{success}</div>}
                 <div className="modal-btn-row">
                   <button onClick={handleVerifyOtp} className="save-btn">
                     Confirm OTP
@@ -406,26 +410,18 @@ const UserMenu = ({ user, onLogout }) => {
       )}
       {showDeleteModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content change-password-modal">
             <h3>Confirm Account Deletion</h3>
-            <div style={{ margin: "16px 0" }}>
+            <div>
+              <div>Enter password to confirm</div>
               <input
                 type="password"
-                placeholder="Enter password to confirm"
                 value={deletePassword}
                 onChange={(e) => setDeletePassword(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 8,
-                  borderRadius: 6,
-                  border: "1px solid #ccc",
-                }}
               />
             </div>
-            {deleteError && (
-              <div style={{ color: "red", marginBottom: 8 }}>{deleteError}</div>
-            )}
-            <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
+            {deleteError && <div className="error-message">{deleteError}</div>}
+            <div className="modal-btn-row">
               <button
                 className="save-btn"
                 onClick={handleDeleteAccount}

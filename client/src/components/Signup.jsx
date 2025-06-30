@@ -223,8 +223,7 @@ const Signup = () => {
           </button>
         ) : (
           <>
-            <div className="input-icon">
-              <i className="fa-solid fa-shield-halved"></i>
+            <div className="input-icon" style={{ paddingLeft: 0 }}>
               <input
                 type="text"
                 maxLength="6"
@@ -238,6 +237,21 @@ const Signup = () => {
                     e.preventDefault();
                     handleVerifyOTP();
                   }
+                }}
+                style={{
+                  paddingLeft: "12px",
+                  paddingRight: "36px",
+                  paddingTop: "10px",
+                  paddingBottom: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  fontSize: "17px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#f6f8ff",
+                  marginBottom: 0,
+                  transition: "border 0.2s",
+                  fontFamily: "'Times New Roman', Times, serif",
                 }}
               />
             </div>

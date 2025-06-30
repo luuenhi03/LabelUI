@@ -263,36 +263,6 @@ router.get("/image/:id", (req, res) => {
   );
 });
 
-router.post("/upload/avatar", upload.single("avatar"), async (req, res) => {
-  try {
-    const userId = req.body.userId;
-    const avatarFileId = req.file.id;
-
-    const User = require("../models/User");
-    await User.findByIdAndUpdate(userId, { avatar: avatarFileId });
-
-    res
-      .status(201)
-      .json({ message: "Avatar uploaded", avatarId: avatarFileId });
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-router.get("/avatar/:id", (req, res) => {
-  gfs.files.findOne(
-    { _id: mongoose.Types.ObjectId(req.params.id) },
-    (err, file) => {
-      if (!file || file.length === 0) {
-        return res.status(404).json({ message: "No avatar found" });
-      }
-      const readstream = gfs.createReadStream(file.filename);
-      res.set("Content-Type", file.contentType);
-      readstream.pipe(res);
-    }
-  );
-});
-
 mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
 const conn = mongoose.connection;
 

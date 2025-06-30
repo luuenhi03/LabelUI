@@ -34,10 +34,9 @@ export default function MainLayout({ children }) {
       <TopNavBar />
       <div
         style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          paddingTop: 24,
+          width: "100%",
           padding: "24px",
+          boxSizing: "border-box",
         }}
       >
         {children}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "../utils/axios";
 
 const DatasetPage = () => {
   const [datasets, setDatasets] = useState([]);
@@ -11,7 +12,6 @@ const DatasetPage = () => {
     const fetchDatasets = async () => {
       try {
         console.log("=== DatasetPage Fetch Datasets Debug ===");
-        const token = localStorage.getItem("token");
         const storedUser = JSON.parse(localStorage.getItem("user"));
         console.log("Stored user:", storedUser);
 
@@ -21,21 +21,14 @@ const DatasetPage = () => {
         }
 
         console.log("Fetching datasets...");
-        const response = await fetch(`/api/dataset?userId=${storedUser.id}`);
-
-        console.log("Response status:", response.status);
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error("API Error:", errorData);
-          throw new Error(errorData.message || "Unable to load dataset list");
-        }
-
-        const data = await response.json();
-        console.log("API Response:", data);
-        setDatasets(data);
+        const response = await axios.get(
+          `/api/dataset?userId=${storedUser.id}`
+        );
+        console.log("API Response:", response.data);
+        setDatasets(response.data);
       } catch (err) {
         console.error("Error fetching datasets:", err);
-        setError(err.message);
+        setError(err.message || "Unable to load dataset list");
       } finally {
         setLoading(false);
       }

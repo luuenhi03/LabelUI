@@ -11,6 +11,7 @@ const Otp = require("../models/Otp");
 const multer = require("multer");
 const { auth } = require("../middleware/auth");
 const LabeledImage = require("../models/LabeledImage");
+const gridFsStorage = require("../gridfs");
 
 const checkDatabaseConnection = () => {
   return mongoose.connection.readyState === 1;
@@ -71,31 +72,43 @@ const generateOTP = () => {
 
 router.post("/send-otp-register", async (req, res) => {
   try {
+    console.log("Received registration request for email:", req.body.email);
+
     if (!checkDatabaseConnection()) {
+      console.log("Database connection check failed");
       return res.status(500).json({ message: "Database connection error" });
     }
+    console.log("Database connection check passed");
 
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: "Email is required" });
+    if (!email) {
+      console.log("Email is missing in request");
+      return res.status(400).json({ message: "Email is required" });
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
+      console.log("Email already registered:", email);
       return res.status(400).json({ message: "Email has been registed!" });
     }
+    console.log("Email check passed - not registered");
 
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+    console.log("Generated OTP:", otp, "expires at:", otpExpiry);
 
     await Otp.findOneAndUpdate(
       { email },
       { code: otp, expiry: otpExpiry },
       { upsert: true, new: true }
     );
+    console.log("OTP saved to database");
 
     try {
       await sendOtpMail(email, otp);
       console.log("OTP email sent successfully (register)");
     } catch (emailError) {
+      console.error("Failed to send OTP email:", emailError);
       return res.status(500).json({
         message: "Unable to send OTP email",
         error: emailError.message,
@@ -104,6 +117,7 @@ router.post("/send-otp-register", async (req, res) => {
 
     res.status(200).json({ message: "OTP has been sent" });
   } catch (error) {
+    console.error("Error in send-otp-register:", error);
     res
       .status(500)
       .json({ message: "Error sending OTP", error: error.message });
@@ -287,40 +301,90 @@ router.post("/check-password", async (req, res) => {
   res.json({ success: true });
 });
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "public/avatars/");
+const upload = multer({
+  storage: gridFsStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+      return cb(new Error("Only accept image files!"), false);
+    }
+    cb(null, true);
   },
 });
-const uploadAvatar = multer({ storage: storage });
 
 router.post(
   "/upload-avatar",
-  uploadAvatar.single("avatar"),
+  auth,
+  upload.single("avatar"),
   async (req, res) => {
     try {
-      const { email } = req.body;
-      if (!req.file)
+      if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
+      }
 
-      const avatarUrl = `/avatars/${req.file.filename}`;
-      const user = await User.findOneAndUpdate(
-        { email },
-        { avatar: avatarUrl },
+      if (!req.file.mimetype.startsWith("image/")) {
+        return res.status(400).json({ message: "Only accept image files!" });
+      }
+
+      const avatarFileId = req.file.id || req.file._id;
+      const user = await User.findByIdAndUpdate(
+        req.user._id,
+        {
+          avatar: avatarFileId,
+          avatarUrl: `/api/auth/avatar/${avatarFileId}`,
+        },
         { new: true }
       );
-      if (!user) return res.status(404).json({ message: "User not found" });
 
-      res.json({ message: "Avatar updated", avatar: avatarUrl });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({
+        message: "Update avatar successfully",
+        avatar: avatarFileId,
+        avatarUrl: `/api/auth/avatar/${avatarFileId}`,
+      });
     } catch (error) {
-      res.status(500).json({ message: "Upload error", error: error.message });
+      console.error("Error uploading avatar:", error);
+      res.status(500).json({
+        message: "Error uploading avatar",
+        error: error.message,
+      });
     }
   }
 );
+
+router.get("/avatar/:fileId", async (req, res) => {
+  try {
+    const fileId = new mongoose.Types.ObjectId(req.params.fileId);
+    const db = mongoose.connection.db;
+    const bucket = new mongoose.mongo.GridFSBucket(db, {
+      bucketName: "avatars",
+    });
+
+    const files = await db
+      .collection("avatars.files")
+      .find({ _id: fileId })
+      .toArray();
+
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: "Avatar not found" });
+    }
+
+    res.set("Content-Type", files[0].contentType);
+    const downloadStream = bucket.openDownloadStream(fileId);
+    downloadStream.pipe(res);
+  } catch (error) {
+    console.error("Error getting avatar:", error);
+    res.status(500).json({
+      message: "Error getting avatar",
+      error: error.message,
+    });
+  }
+});
 
 router.delete("/delete-account/:id", auth, async (req, res) => {
   const userIdToDelete = req.params.id;

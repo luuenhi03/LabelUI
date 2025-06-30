@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import axios from "axios";
+import axios from "../utils/axios";
 import "./Login.scss";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
@@ -31,13 +31,10 @@ const Login = () => {
     setIsLoading(true);
     setError("");
     try {
-      const response = await axios.post(
-        "http://localhost:5000/api/auth/login",
-        {
-          email,
-          password,
-        }
-      );
+      const response = await axios.post("/api/auth/login", {
+        email,
+        password,
+      });
 
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));

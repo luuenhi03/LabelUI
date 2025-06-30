@@ -5,7 +5,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import axios from "axios";
+import axios from "../utils/axios";
 import { RiDeleteBinLine, RiCloseLine } from "react-icons/ri";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import "./Label.scss";
@@ -40,10 +40,9 @@ const ImageLabelPieChart = ({
 
   useEffect(() => {
     if (!datasetId || !imageId) return;
-    fetch(
-      `http://localhost:5000/api/dataset/${datasetId}/images/${imageId}/label-stats`
-    )
-      .then((res) => res.json())
+    axios
+      .get(`/api/dataset/${datasetId}/images/${imageId}/label-stats`)
+      .then((res) => res.data)
       .then((stats) => {
         if (!Array.isArray(stats)) {
           console.error("Stats is not an array:", stats);
@@ -196,36 +195,12 @@ const Label = forwardRef((props, sref) => {
     }
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images`
+        `/api/dataset/${selectedDataset}/images`
       );
       setImageList(response.data);
-      setTotalImages(response.data.length);
-
-      console.log("Selected dataset:", selectedDataset);
-      console.log("Image list from API:", response.data);
-      console.log("imageIdFromUrl:", imageIdFromUrl);
-
-      if (response.data.length > 0) {
-        if (imageIdFromUrl) {
-          const foundIndex = response.data.findIndex(
-            (img) => img._id === imageIdFromUrl
-          );
-          if (foundIndex !== -1) {
-            await loadImage(response.data[foundIndex], foundIndex);
-          } else {
-            await loadImage(response.data[0], 0);
-          }
-        } else {
-          await loadImage(response.data[0], 0);
-        }
-      } else {
-        setImageUrl("");
-        setSelectedImage(null);
-        setMessage("");
-      }
     } catch (error) {
       console.error("Error loading image list:", error);
-      setMessage("Error loading image list: " + error.message);
+      setImageList([]);
     }
   };
 
@@ -292,132 +267,21 @@ const Label = forwardRef((props, sref) => {
   };
 
   const handleSaveLabel = async () => {
-    if (!selectedImage || !label.trim()) {
-      setMessage("Please enter a label!");
-      return;
-    }
-
-    if (!selectedDataset) {
-      setMessage("Please select a dataset first!");
-      return;
-    }
-
-    if (!/^[0-9a-fA-F]{24}$/.test(selectedDataset)) {
-      setMessage("Invalid Dataset ID!");
-      return;
-    }
-
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const email = storedUser?.email;
-    if (!email) {
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
-      navigate("/login");
-      return;
-    }
+    if (!selectedImage || !label) return;
 
     try {
-      const response = await axios.put(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images/${selectedImage._id}`,
+      await axios.post(
+        `/api/dataset/${selectedDataset}/images/${selectedImage._id}/label`,
         {
-          label: label.trim(),
-          labeledBy: email,
-          boundingBox: selectedImage.coordinates
-            ? {
-                topLeft: selectedImage.coordinates.topLeft,
-                bottomRight: selectedImage.coordinates.bottomRight,
-              }
-            : null,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          validateStatus: () => true,
+          label,
+          userId: storedUser.id,
         }
       );
 
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-        navigate("/login");
-        return;
-      }
-
-      if (response.status !== 200) {
-        setMessage("Error saving label. Please try again!");
-        setTimeout(() => setMessage(""), 3000);
-        return;
-      }
-
-      setLatestLabeled((prev) => {
-        const exists = prev.some((img) => img._id === selectedImage._id);
-        const newLabeled = {
-          ...selectedImage,
-          label: label.trim(),
-          labeledBy: storedUser.email,
-          labeledAt: new Date().toISOString(),
-          fileId: selectedImage.fileId,
-          url: selectedImage.url,
-        };
-        if (exists) {
-          return [
-            newLabeled,
-            ...prev.filter((img) => img._id !== selectedImage._id),
-          ];
-        } else {
-          return [newLabeled, ...prev];
-        }
-      });
-
-      setLabel("");
-      setImageInfo({
-        label: response.data.label,
-        labeledBy: response.data.labeledBy,
-        status: "labeled",
-      });
-      setSelectedImage((prev) =>
-        prev
-          ? {
-              ...prev,
-              label: response.data.label,
-              labeledBy: response.data.labeledBy,
-              labeledAt: response.data.labeledAt,
-            }
-          : prev
-      );
-
-      const updatedImageList = imageList.map((img, idx) =>
-        idx === currentIndex
-          ? {
-              ...img,
-              label: response.data.label,
-              labeledBy: response.data.labeledBy,
-              labeledAt: response.data.labeledAt,
-            }
-          : img
-      );
-      setImageList(updatedImageList);
-
-      if (currentIndex < imageList.length - 1) {
-        loadImage(updatedImageList[currentIndex + 1], currentIndex + 1);
-      } else {
-        setMessage("All images in dataset have been labeled.");
-      }
-
-      await loadLabeledImages(0);
-      setStatsRefreshKey((k) => k + 1);
-
-      setTimeout(() => setMessage(""), 3000);
+      loadLabeledImages(pageIndex);
+      handleNextImage();
     } catch (error) {
       console.error("Error saving label:", error);
-      console.error("Error details:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      setMessage("Error saving label. Please try again!");
-      setTimeout(() => setMessage(""), 3000);
     }
   };
 
@@ -432,10 +296,10 @@ const Label = forwardRef((props, sref) => {
 
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}`,
+        `/api/dataset/${selectedDataset}/images/${imageId}/label`,
         {
           label: newLabel.trim(),
-          labeledBy: email,
+          userId: storedUser.id,
         }
       );
 
@@ -457,67 +321,24 @@ const Label = forwardRef((props, sref) => {
   };
 
   const loadLabeledImages = async (page = 0) => {
-    if (!selectedDataset) return;
-
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/dataset/${selectedDataset}/labeled?page=${page}`
+        `/api/dataset/${selectedDataset}/labeled-images?page=${page}`
       );
-
-      const sortedImages = response.data.images.sort((a, b) => {
-        if (a.isCropped && !b.isCropped) return -1;
-        if (!a.isCropped && b.isCropped) return 1;
-        return new Date(b.labeledAt) - new Date(a.labeledAt);
-      });
-      setLatestLabeled(sortedImages);
-      setAllLabeledImages(response.data.total);
-      setPageIndex(page);
+      setAllLabeledImages(response.data.images);
+      setTotalImages(response.data.total);
     } catch (error) {
       console.error("Error loading labeled images:", error);
-      setMessage("Error loading labeled images!");
-      setLatestLabeled([]);
-      setAllLabeledImages(0);
     }
   };
 
   const handleDeleteImageFromDataset = async (imageId) => {
-    if (!selectedDataset) {
-      setMessage("Please select a dataset first!");
-      return;
-    }
     try {
-      // Always delete image completely from dataset when delete button is clicked in label section
-      const response = await axios.delete(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
-
-      if (response.status === 200) {
-        await loadImageList();
-        await loadLabeledImages(0);
-        setStatsRefreshKey((k) => k + 1);
-
-        setImageList((prevList) => {
-          const newList = prevList.filter((img) => img._id !== imageId);
-          if (newList.length > 0) {
-            const nextIndex = Math.min(currentIndex, newList.length - 1);
-            setCurrentIndex(nextIndex);
-            loadImage(newList[nextIndex], nextIndex);
-          } else {
-            setSelectedImage(null);
-            setImageUrl("");
-          }
-          return newList;
-        });
-      }
+      await axios.delete(`/api/dataset/${selectedDataset}/images/${imageId}`);
+      loadImageList();
+      loadLabeledImages(pageIndex);
     } catch (error) {
       console.error("Error deleting image:", error);
-      setMessage("Error deleting image. Please try again!");
-      setTimeout(() => setMessage(""), 3000);
     }
   };
 
@@ -572,7 +393,6 @@ const Label = forwardRef((props, sref) => {
       }
     } catch (error) {
       console.error("Error loading dataset list:", error);
-      setMessage("Error loading dataset list");
     }
   };
 
@@ -584,7 +404,7 @@ const Label = forwardRef((props, sref) => {
 
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/dataset/${selectedDataset}/export`,
+        `/api/dataset/${selectedDataset}/export`,
         { responseType: "blob" }
       );
 
@@ -618,27 +438,13 @@ const Label = forwardRef((props, sref) => {
   const userCount = 4;
 
   const handleResetLabel = async (imageId) => {
-    if (!selectedDataset) {
-      alert("Please select a dataset first!");
-      return;
-    }
     try {
-      await axios.put(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}`,
-        {
-          label: "",
-          labeledBy: "",
-          labeledAt: null,
-        }
+      await axios.delete(
+        `/api/dataset/${selectedDataset}/images/${imageId}/label`
       );
-
-      setLatestLabeled((prev) => prev.filter((img) => img._id !== imageId));
-      setMessage("Label reset successfully!");
-      setTimeout(() => setMessage(""), 3000);
+      loadLabeledImages(pageIndex);
     } catch (error) {
       console.error("Error resetting label:", error);
-      setMessage("Error resetting label. Please try again!");
-      setTimeout(() => setMessage(""), 3000);
     }
   };
 
@@ -663,39 +469,14 @@ const Label = forwardRef((props, sref) => {
     setTimeout(() => setMessage(""), 3000);
   };
 
-  // Remove user's label from an image in 'Labeled Images' section
   const handleDeleteUserLabelFromLabeledList = async (imageId) => {
-    if (!selectedDataset) {
-      setMessage("Please select a dataset first!");
-      return;
-    }
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const email = storedUser?.email || "";
-    if (!email) {
-      setMessage("Không tìm thấy thông tin người dùng!");
-      return;
-    }
     try {
-      const response = await axios.delete(
-        `http://localhost:5000/api/dataset/${selectedDataset}/images/${imageId}/label`,
-        {
-          data: { email },
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
+      await axios.delete(
+        `/api/dataset/${selectedDataset}/images/${imageId}/user-label/${storedUser.id}`
       );
-      if (response.status === 200) {
-        // Hide image from current user's labeled images list
-        setLatestLabeled((prev) => prev.filter((img) => img._id !== imageId));
-        // Update label statistics
-        setStatsRefreshKey((prev) => prev + 1);
-        setMessage("");
-      }
+      loadLabeledImages(pageIndex);
     } catch (error) {
-      console.error("Error removing user label from image:", error);
-      setMessage("Error removing label. Please try again!");
-      setTimeout(() => setMessage(""), 3000);
+      console.error("Error deleting user label:", error);
     }
   };
 
@@ -712,27 +493,27 @@ const Label = forwardRef((props, sref) => {
               })
             : null}
           <div className="label-header">
-            <h1>Label Image</h1>
-            <div className="dataset-selector-container">
-              <select
-                className="dataset-selector"
-                value={selectedDataset}
-                onChange={handleDatasetChange}
-              >
-                <option value="">Select dataset...</option>
-                {datasets.map((dataset) => (
-                  <option key={dataset._id} value={dataset._id}>
-                    {dataset.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <h2>Label Image</h2>
+            <select
+              value={selectedDataset}
+              onChange={handleDatasetChange}
+              className="dataset-select"
+            >
+              <option value="">Select dataset...</option>
+              {datasets.map((ds) => (
+                <option key={ds._id} value={ds._id}>
+                  {ds.name}
+                </option>
+              ))}
+            </select>
           </div>
           {message && <div className="message">{message}</div>}
           {!selectedDataset ? (
             <div className="no-dataset-message">
               Please select a dataset to start labeling
             </div>
+          ) : imageList.length === 0 ? (
+            <div className="no-images-message">No images left to label</div>
           ) : imageUrl && !showCrop ? (
             <>
               <div

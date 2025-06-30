@@ -6,6 +6,7 @@ const instance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true,
 });
 
 instance.interceptors.request.use(
@@ -18,6 +19,26 @@ instance.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
+  }
+);
+
+instance.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      // Server trả về response với status code nằm ngoài 2xx
+      return Promise.reject(error.response.data);
+    } else if (error.request) {
+      // Request được gửi nhưng không nhận được response
+      return Promise.reject({
+        message: "Unable to connect to server. Please check your connection!",
+      });
+    } else {
+      // Có lỗi khi setting up request
+      return Promise.reject({
+        message: "An error occurred. Please try again!",
+      });
+    }
   }
 );
 

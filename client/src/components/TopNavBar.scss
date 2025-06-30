@@ -9,19 +9,22 @@
   justify-content: space-between;
   background: #1976d2;
   color: #fff;
-  height: 56px;
-  padding: 0 16px;
+  height: 64px;
+  padding: 0 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
   .logo {
     font-weight: bold;
     font-size: 22px;
     letter-spacing: 1px;
+    flex-shrink: 0;
   }
   .menu {
     display: flex;
     gap: 32px;
-    margin-left: 48px;
+    margin: 0 48px;
+    flex-grow: 1;
+    justify-content: center;
     a {
       color: #fff;
       text-decoration: none;
@@ -38,5 +41,8 @@
   .profile {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    min-width: 48px;
   }
 } 

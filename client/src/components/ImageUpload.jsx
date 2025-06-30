@@ -15,48 +15,39 @@ const ImageUpload = ({ onUploadSuccess }) => {
   const [actionMessage, setActionMessage] = useState("");
   const [datasetsError, setDatasetsError] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
+  const [messageType, setMessageType] = useState("");
 
   useEffect(() => {
+    const fetchDatasets = async () => {
+      try {
+        setLoading(true);
+        const storedUser = JSON.parse(localStorage.getItem("user"));
+
+        const response = await axios.get("http://localhost:5000/api/dataset", {
+          params: {
+            userId: storedUser.id,
+          },
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        });
+
+        setDatasets(response.data);
+      } catch (error) {
+        console.error("Error:", error);
+        setDatasetsError("Error when fetching dataset list");
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchDatasets();
   }, []);
-
-  const fetchDatasets = async () => {
-    try {
-      setLoading(true);
-      console.log("=== Fetch Datasets Debug ===");
-
-      const storedUser = JSON.parse(localStorage.getItem("user"));
-      console.log("Stored user:", storedUser);
-
-      if (!storedUser || !storedUser.id) {
-        setMessage("Please login to view dataset list!");
-        return;
-      }
-
-      console.log("Fetching datasets...");
-      const response = await axios.get(
-        `http://localhost:5000/api/dataset?userId=${storedUser.id}`
-      );
-
-      console.log("API Response:", response.data);
-      setDatasets(response.data);
-      setMessage("");
-    } catch (error) {
-      console.error("Error fetching dataset list:", error);
-      console.error("Error details:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      setMessage("Cannot load dataset list. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const createDataset = async () => {
     if (!newDatasetName.trim()) {
       setMessage("Please enter a dataset name!");
+      setMessageType("error");
       return;
     }
 
@@ -64,12 +55,13 @@ const ImageUpload = ({ onUploadSuccess }) => {
       const storedUser = JSON.parse(localStorage.getItem("user"));
       if (!storedUser || !storedUser.id) {
         setMessage("Please login to create a dataset!");
+        setMessageType("error");
         return;
       }
 
       const response = await axios.post("http://localhost:5000/api/dataset", {
         name: newDatasetName.trim(),
-        userId: storedUser.id,
+        userId: storedUser.id.toString(),
         isPrivate: isPrivate,
       });
 
@@ -77,9 +69,14 @@ const ImageUpload = ({ onUploadSuccess }) => {
       setSelectedDataset(response.data._id);
       setNewDatasetName("");
       setMessage("Dataset created successfully!");
+      setMessageType("success");
     } catch (error) {
       console.error("Error creating dataset:", error);
-      setMessage("Cannot create dataset. Please try again later.");
+      const errorMessage =
+        error.response?.data?.message ||
+        "Cannot create dataset. Please try again later.";
+      setMessage(errorMessage);
+      setMessageType("error");
     }
   };
 
@@ -91,11 +88,13 @@ const ImageUpload = ({ onUploadSuccess }) => {
 
     if (files.length > maxFiles) {
       setMessage(`Maximum ${maxFiles} files allowed.`);
+      setMessageType("error");
       return;
     }
     for (let file of files) {
       if (file.size > maxSize) {
         setMessage("File too large. Maximum allowed size is 10MB.");
+        setMessageType("error");
         return;
       }
     }
@@ -130,15 +129,18 @@ const ImageUpload = ({ onUploadSuccess }) => {
       setMessage(
         "No internet connection. Please check your network and try again."
       );
+      setMessageType("error");
       return;
     }
     if (!selectedDataset) {
       setMessage("Please select a dataset!");
+      setMessageType("error");
       return;
     }
 
     if (images.length === 0) {
       setMessage("Please select images to upload!");
+      setMessageType("error");
       return;
     }
 
@@ -149,6 +151,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
       const token = localStorage.getItem("token");
       if (!token) {
         setMessage("Please login to upload images!");
+        setMessageType("error");
         return;
       }
 
@@ -196,6 +199,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
       }
 
       setMessage(`Successfully uploaded ${images.length} images!`);
+      setMessageType("success");
       setTimeout(() => setMessage(""), 3000);
       setImages([]);
       if (fileInputRef.current) {
@@ -211,6 +215,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
           error.message ||
           "Cannot upload images. Please try again later."
       );
+      setMessageType("error");
     } finally {
       setUploading(false);
     }
@@ -336,9 +341,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
 
       {message && (
         <div
-          className={`message ${
-            message.includes("Cannot") ? "error" : "success"
-          }`}
+          className={`message ${messageType}`}
           style={{
             padding: "12px 16px",
             borderRadius: "8px",
@@ -504,6 +507,22 @@ const ImageUpload = ({ onUploadSuccess }) => {
         .upload-area:hover {
           border-color: #1976d2;
           background-color: #f5f9ff;
+        }
+        .message {
+          padding: 10px;
+          border-radius: 4px;
+          margin: 10px 0;
+          text-align: center;
+        }
+        .message.error {
+          color: #721c24;
+          background-color: #f8d7da;
+          border: 1px solid #f5c6cb;
+        }
+        .message.success {
+          color: #155724;
+          background-color: #d4edda;
+          border: 1px solid #c3e6cb;
         }
       `}</style>
     </div>

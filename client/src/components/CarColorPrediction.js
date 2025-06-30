@@ -1,40 +1,29 @@
 import React, { useState } from "react";
+import axios from "../utils/axios";
 import "./CarColorPrediction.css";
 
 const CarColorPrediction = () => {
   const [selectedFile, setSelectedFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-
-  const serverBUrl = "http://localhost:5001";
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [prediction, setPrediction] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
-      setError(null);
-      setResult(null);
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreview(e.target.result);
-      };
-      reader.readAsDataURL(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      setPrediction("");
+      setError("");
     }
   };
 
   const handleReset = () => {
     setSelectedFile(null);
-    setPreview(null);
-    setResult(null);
-    setError(null);
-
-    const fileInput = document.getElementById("image-input");
-    if (fileInput) {
-      fileInput.value = "";
-    }
+    setPreviewUrl("");
+    setPrediction("");
+    setError("");
   };
 
   const handlePredict = async () => {
@@ -43,91 +32,77 @@ const CarColorPrediction = () => {
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
     const formData = new FormData();
     formData.append("image", selectedFile);
 
+    setIsLoading(true);
+    setError("");
     try {
-      const response = await fetch(serverBUrl, {
+      const response = await fetch("http://localhost:5001/classify", {
         method: "POST",
         body: formData,
       });
 
-      const data = await response.json();
-
-      if (data.error) {
-        setError(data.error);
-      } else if (data.result) {
-        setResult(data.result);
-      } else {
-        setError("No result returned from server.");
+      if (!response.ok) {
+        throw new Error("Classification failed");
       }
-    } catch (err) {
-      setError("Connection error to server: " + err.message);
-    } finally {
-      setLoading(false);
+
+      const result = await response.json();
+      setPrediction(result.prediction);
+    } catch (error) {
+      console.error("Error predicting color:", error);
+      setError("Failed to predict color. Please try again.");
     }
+    setIsLoading(false);
   };
 
   return (
-    <div className="car-color-prediction">
+    <div className="prediction-container">
       <h1>Car Color Prediction</h1>
 
-      <div className="upload-section">
-        <input
-          accept="image/*"
-          style={{ display: "none" }}
-          id="image-input"
-          type="file"
-          onChange={handleFileSelect}
-        />
-        <label htmlFor="image-input" className="upload-button">
-          Choose Image
-        </label>
-        {selectedFile && <p className="file-name">{selectedFile.name}</p>}
-      </div>
-
-      {preview && (
-        <div className="preview-section">
-          <img src={preview} alt="Preview" className="preview-image" />
+      <div className="prediction-content">
+        <div className="image-upload-section">
+          {!previewUrl ? (
+            <>
+              <input
+                type="file"
+                onChange={handleFileSelect}
+                accept="image/*"
+                style={{ display: "none" }}
+                id="file-input"
+              />
+              <label htmlFor="file-input" className="choose-image-btn">
+                Choose Image
+              </label>
+            </>
+          ) : (
+            <>
+              <img src={previewUrl} alt="Preview" className="preview-image" />
+              <div className="button-group">
+                <button
+                  className="choose-image-btn"
+                  onClick={handlePredict}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Predicting..." : "Predict Color"}
+                </button>
+                <button className="exit-btn" onClick={handleReset}>
+                  Exit
+                </button>
+              </div>
+            </>
+          )}
         </div>
-      )}
 
-      <div className="button-group">
-        {selectedFile && (
-          <button
-            className="predict-button"
-            onClick={handlePredict}
-            disabled={loading}
-          >
-            Predict
-          </button>
+        {error && <div className="error-message">{error}</div>}
+
+        {prediction && !error && (
+          <div className="prediction-result">
+            <h3>Predicted Color:</h3>
+            <div className="color-prediction">{prediction}</div>
+          </div>
         )}
-        {(selectedFile || result || error) && (
-          <button className="exit-button" onClick={handleReset}>
-            Exit
-          </button>
-        )}
       </div>
-
-      {loading && (
-        <div className="loading-section">
-          <div className="loading-spinner"></div>
-          <p>Processing...</p>
-        </div>
-      )}
-
-      {error && <div className="error-message">{error}</div>}
-
-      {result && result.prediction && (
-        <div className="result-message">
-          Predicted color: {result.prediction.predicted_class} <br />
-          Confidence: {result.prediction.confidence}
-        </div>
-      )}
     </div>
   );
 };

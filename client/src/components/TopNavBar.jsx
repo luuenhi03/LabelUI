@@ -41,7 +41,7 @@ export default function TopNavBar() {
         <Link to="/upload">Upload image</Link>
         <Link to="/dataset">Dataset</Link>
         <Link to="/label">Label</Link>
-        <Link to="/modelling">Modelling</Link>
+        <Link to="/color-detection">Predict</Link>
       </div>
       <div className="profile">
         <UserMenu user={storedUser} onLogout={handleLogout} />
