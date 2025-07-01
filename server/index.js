@@ -3,8 +3,6 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const path = require("path");
-const http = require("http");
-const WebSocket = require("ws");
 const { createDefaultAdmin } = require("./middleware/auth");
 const authRoutes = require("./routes/auth");
 const uploadRoutes = require("./routes/upload");
@@ -16,63 +14,71 @@ const bcrypt = require("bcrypt");
 const nodemailer = require("nodemailer");
 
 const app = express();
-const server = http.createServer(app);
 
-const wss = new WebSocket.Server({
-  server,
-  path: "/ws",
-});
+// CORS configuration
+const corsOptions = {
+  origin:
+    process.env.NODE_ENV === "production"
+      ? process.env.CLIENT_URL
+      : ["http://localhost:3000", "http://127.0.0.1:3000"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Range", "X-Content-Range"],
+  credentials: true,
+  maxAge: 600,
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
 
-wss.on("connection", (ws) => {
-  console.log("New WebSocket connection established");
-
-  ws.on("message", (message) => {
-    console.log("Received:", message.toString());
-  });
-
-  ws.on("close", () => {
-    console.log("Client disconnected");
-  });
-
-  ws.send(
-    JSON.stringify({
-      type: "connection",
-      message: "Connected to WebSocket server",
-    })
-  );
-});
-
-app.use(
-  cors({
-    origin: ["http://localhost:3000", "http://localhost:5000"],
-    credentials: true,
-  })
-);
-app.use(express.json({ limit: "10mb" }));
+app.use(cors(corsOptions));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static("public"));
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 app.use("/avatars", express.static(path.join(__dirname, "public/avatars")));
 
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/label_db";
+  process.env.NODE_ENV === "production"
+    ? process.env.MONGODB_ATLAS_URI
+    : process.env.MONGODB_LOCAL_URI || "mongodb://localhost:27017/label_db";
+
 console.log("Connecting to MongoDB:", MONGODB_URI);
+
+// MongoDB connection with proper options
+mongoose
+  .connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    connectTimeoutMS: 10000,
+  })
+  .catch((err) => {
+    console.error("MongoDB connection error:", err);
+  });
 
 let gfs;
 const conn = mongoose.connection;
+
+conn.on("error", (err) => {
+  console.error("MongoDB connection error:", err);
+});
+
+conn.on("disconnected", () => {
+  console.log("MongoDB disconnected");
+});
 
 conn.once("open", () => {
   gfs = Grid(conn.db, mongoose.mongo);
   gfs.collection("uploads");
   console.log("Successfully connected to MongoDB and initialized GridFS");
-
   createDefaultAdmin();
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/upload", uploadRoutes);
 app.use("/api/dataset", datasetRoutes);
+app.use("/api/upload", uploadRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.get("/api/dataset/image/:fileId", async (req, res) => {
@@ -152,10 +158,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 5001;
-server.listen(PORT, () => {
-  console.log(`Main server is running on port ${PORT}`);
-  console.log(`WebSocket server is running on ws://localhost:${PORT}/ws`);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
 
 module.exports = { gfs };

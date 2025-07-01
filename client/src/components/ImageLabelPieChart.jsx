@@ -23,7 +23,6 @@ const ImageLabelPieChart = ({
           return;
         }
 
-        // Add cropped status to stats if image is cropped
         fetch(
           `http://localhost:5000/api/dataset/${datasetId}/images/${imageId}`
         )

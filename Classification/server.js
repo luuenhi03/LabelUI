@@ -8,54 +8,38 @@ const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = "uploads";
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
-    );
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|bmp|tiff/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
+const upload = multer({ storage: storage });
 
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(
-        new Error(
-          "Invalid file type. Only JPEG, JPG, PNG, BMP, and TIFF are allowed."
-        )
-      );
-    }
-  },
-});
+// Detailed CORS configuration
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+
+app.use(express.json());
 
 // Health check endpoint
 app.get("/health", (req, res) => {
+  console.log("Health check request received");
   res.json({
     status: "OK",
     message: "Color Classification API is running",
@@ -65,110 +49,145 @@ app.get("/health", (req, res) => {
 
 // Main classification endpoint
 app.post("/classify", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        error: "No image file provided",
-        message: "Please upload an image file",
-      });
-    }
-
-    const imagePath = req.file.path;
-    console.log(`Processing image: ${imagePath}`);
-
-    // Call Python script for inference
-    const result = await runPythonInference(imagePath);
-
-    // Clean up uploaded file
-    fs.unlink(imagePath, (err) => {
-      if (err) console.error("Error deleting uploaded file:", err);
-    });
-
-    res.json({
-      success: true,
-      filename: req.file.originalname,
-      result: result,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("Classification error:", error);
-
-    // Clean up uploaded file in case of error
-    if (req.file && req.file.path) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error("Error deleting uploaded file:", err);
-      });
-    }
-
-    res.status(500).json({
-      error: "Classification failed",
-      message: error.message,
-      timestamp: new Date().toISOString(),
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: "No image file provided",
     });
   }
+
+  console.log("Processing file:", req.file.path);
+
+  const pythonProcess = spawn("python", [
+    path.join(__dirname, "inference.py"),
+    req.file.path,
+  ]);
+
+  let result = "";
+  let error = "";
+
+  pythonProcess.stdout.on("data", (data) => {
+    result += data.toString();
+  });
+
+  pythonProcess.stderr.on("data", (data) => {
+    error += data.toString();
+    console.error("Python error:", data.toString());
+  });
+
+  pythonProcess.on("close", (code) => {
+    // Clean up uploaded file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting file:", err);
+    });
+
+    if (code !== 0) {
+      console.error(`Python process exited with code ${code}`);
+      return res.status(500).json({
+        success: false,
+        error: error || "Failed to process image",
+      });
+    }
+
+    try {
+      const prediction = JSON.parse(result);
+      if (prediction.error) {
+        return res.status(500).json({
+          success: false,
+          error: prediction.error,
+        });
+      }
+      res.json({
+        success: true,
+        prediction: prediction,
+      });
+    } catch (err) {
+      console.error("Error parsing Python output:", err);
+      res.status(500).json({
+        success: false,
+        error: "Invalid prediction format",
+      });
+    }
+  });
+
+  pythonProcess.on("error", (err) => {
+    console.error("Failed to start Python process:", err);
+    // Clean up uploaded file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting file:", err);
+    });
+    res.status(500).json({
+      success: false,
+      error: "Failed to start prediction process",
+    });
+  });
 });
 
 // Batch classification endpoint
-app.post("/classify-batch", upload.array("images", 10), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({
-        error: "No image files provided",
-        message: "Please upload at least one image file",
-      });
-    }
-
-    console.log(`Processing ${req.files.length} images`);
-
-    const results = [];
-
-    for (const file of req.files) {
-      try {
-        const result = await runPythonInference(file.path);
-        results.push({
-          filename: file.originalname,
-          success: true,
-          result: result,
-        });
-      } catch (error) {
-        results.push({
-          filename: file.originalname,
-          success: false,
-          error: error.message,
+app.post(
+  "/classify-batch",
+  multer({ dest: "uploads/" }).array("images", 10),
+  async (req, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          error: "No image files provided",
+          message: "Please upload at least one image file",
         });
       }
 
-      // Clean up file
-      fs.unlink(file.path, (err) => {
-        if (err) console.error("Error deleting uploaded file:", err);
-      });
-    }
+      console.log(`Processing ${req.files.length} images`);
 
-    res.json({
-      success: true,
-      total_images: req.files.length,
-      results: results,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("Batch classification error:", error);
+      const results = [];
 
-    // Clean up uploaded files
-    if (req.files) {
-      req.files.forEach((file) => {
+      for (const file of req.files) {
+        try {
+          const result = await runPythonInference(file.path);
+          results.push({
+            filename: file.originalname,
+            success: true,
+            result: result,
+          });
+        } catch (error) {
+          results.push({
+            filename: file.originalname,
+            success: false,
+            error: error.message,
+          });
+        }
+
+        // Clean up file
         fs.unlink(file.path, (err) => {
           if (err) console.error("Error deleting uploaded file:", err);
         });
+      }
+
+      res.json({
+        success: true,
+        total_images: req.files.length,
+        results: results,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Batch classification error:", error);
+
+      // Clean up uploaded files
+      if (req.files) {
+        req.files.forEach((file) => {
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("Error deleting uploaded file:", err);
+          });
+        });
+      }
+
+      res.status(500).json({
+        error: "Batch classification failed",
+        message: error.message,
+        timestamp: new Date().toISOString(),
       });
     }
-
-    res.status(500).json({
-      error: "Batch classification failed",
-      message: error.message,
-      timestamp: new Date().toISOString(),
-    });
   }
-});
+);
 
 // Function to run Python inference
 function runPythonInference(imagePath) {

@@ -1,4 +1,4 @@
-const mongoURI = "mongodb://localhost:27017/label_db";
+const mongoURI = process.env.MONGODB_URI || "mongodb://localhost:27017/labelui";
 
 const express = require("express");
 const router = express.Router();
@@ -11,6 +11,7 @@ const mongoose = require("mongoose");
 const Grid = require("gridfs-stream");
 const { MongoClient } = require("mongodb");
 const { GridFsStorage } = require("multer-gridfs-storage");
+const { auth } = require("../middleware/auth");
 
 const storage = new GridFsStorage({
   url: mongoURI,
@@ -141,10 +142,20 @@ router.delete("/images/:imageId", async (req, res) => {
   }
 });
 
-router.post("/upload", upload.single("image"), async (req, res) => {
+router.post("/upload", auth, upload.single("image"), async (req, res) => {
   const startTime = performance.now();
   try {
-    const { datasetName } = req.body;
+    const {
+      datasetName,
+      label,
+      labeledBy,
+      labeledAt,
+      coordinates,
+      boundingBox,
+      isCropped,
+      originalImageId,
+      originalImageName,
+    } = req.body;
 
     let dataset = await Dataset.findOne({ name: datasetName });
     if (!dataset) {
@@ -157,22 +168,22 @@ router.post("/upload", upload.single("image"), async (req, res) => {
       originalName: req.file.originalname,
       path: req.file.path.replace(/\\/g, "/").replace(/^.*[\\\/]/, "uploads/"),
       dataset: dataset._id,
-      label: req.body.label,
-      labeledBy: req.body.labeledBy,
-      labeledAt: req.body.labeledAt,
-      coordinates: req.body.coordinates
-        ? JSON.parse(req.body.coordinates)
-        : null,
-      boundingBox: req.body.boundingBox
-        ? JSON.parse(req.body.boundingBox)
-        : null,
-      isCropped: req.body.isCropped === "true",
+      label: label || "",
+      labeledBy: labeledBy || "",
+      labeledAt: labeledAt || new Date().toISOString(),
+      coordinates: coordinates ? JSON.parse(coordinates) : null,
+      boundingBox: boundingBox ? JSON.parse(boundingBox) : null,
+      isCropped: isCropped === "true",
+      originalImageId: originalImageId || null,
+      originalImageName: originalImageName || null,
     });
 
     await image.save();
+
     const endTime = performance.now();
     const executionTime = endTime - startTime;
     console.log(`Upload time: ${executionTime.toFixed(2)}ms`);
+
     res.status(201).json({
       image,
       executionTime: executionTime.toFixed(2),
@@ -180,10 +191,8 @@ router.post("/upload", upload.single("image"), async (req, res) => {
   } catch (error) {
     const endTime = performance.now();
     const executionTime = endTime - startTime;
-    console.log(
-      `Upload failed after ${executionTime.toFixed(2)}ms:`,
-      error.message
-    );
+    console.error(`Upload failed after ${executionTime.toFixed(2)}ms:`, error);
+
     res.status(400).json({
       message: error.message,
       executionTime: executionTime.toFixed(2),

@@ -12,23 +12,54 @@ const DatasetPage = () => {
     const fetchDatasets = async () => {
       try {
         console.log("=== DatasetPage Fetch Datasets Debug ===");
+        const token = localStorage.getItem("token");
         const storedUser = JSON.parse(localStorage.getItem("user"));
         console.log("Stored user:", storedUser);
+        console.log("Token:", token ? "Present" : "Missing");
 
         if (!storedUser || !storedUser.id) {
-          setError("Please login to view dataset list!");
+          console.log("No user data found");
+          setError("Vui lòng đăng nhập để xem danh sách dataset!");
+          setLoading(false);
+          return;
+        }
+
+        if (!token) {
+          console.log("No token found");
+          setError("Vui lòng đăng nhập để xem danh sách dataset!");
+          setLoading(false);
           return;
         }
 
         console.log("Fetching datasets...");
-        const response = await axios.get(
-          `/api/dataset?userId=${storedUser.id}`
+        console.log(
+          "API URL:",
+          process.env.REACT_APP_API_URL || "http://localhost:5000"
         );
+
+        const response = await axios.get(`/api/dataset`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
         console.log("API Response:", response.data);
         setDatasets(response.data);
       } catch (err) {
         console.error("Error fetching datasets:", err);
-        setError(err.message || "Unable to load dataset list");
+        console.error("Error details:", {
+          message: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
+        });
+
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          setError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại!");
+        } else if (!err.response) {
+          setError("Không thể kết nối đến server. Vui lòng thử lại sau!");
+        } else {
+          setError(err.response?.data?.message || err.message);
+        }
       } finally {
         setLoading(false);
       }

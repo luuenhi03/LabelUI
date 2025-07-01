@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import axios from "axios";
+import axios from "../utils/axios";
 import "./ImageUpload.scss";
 
 const ImageUpload = ({ onUploadSuccess }) => {
@@ -21,17 +21,7 @@ const ImageUpload = ({ onUploadSuccess }) => {
     const fetchDatasets = async () => {
       try {
         setLoading(true);
-        const storedUser = JSON.parse(localStorage.getItem("user"));
-
-        const response = await axios.get("http://localhost:5000/api/dataset", {
-          params: {
-            userId: storedUser.id,
-          },
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        });
-
+        const response = await axios.get("/api/dataset");
         setDatasets(response.data);
       } catch (error) {
         console.error("Error:", error);
@@ -52,16 +42,8 @@ const ImageUpload = ({ onUploadSuccess }) => {
     }
 
     try {
-      const storedUser = JSON.parse(localStorage.getItem("user"));
-      if (!storedUser || !storedUser.id) {
-        setMessage("Please login to create a dataset!");
-        setMessageType("error");
-        return;
-      }
-
-      const response = await axios.post("http://localhost:5000/api/dataset", {
+      const response = await axios.post("/api/dataset", {
         name: newDatasetName.trim(),
-        userId: storedUser.id.toString(),
         isPrivate: isPrivate,
       });
 
@@ -148,13 +130,6 @@ const ImageUpload = ({ onUploadSuccess }) => {
       setUploading(true);
       setMessage("");
 
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setMessage("Please login to upload images!");
-        setMessageType("error");
-        return;
-      }
-
       const batchSize = 5;
       for (let i = 0; i < images.length; i += batchSize) {
         const batch = images.slice(i, i + batchSize);
@@ -171,12 +146,11 @@ const ImageUpload = ({ onUploadSuccess }) => {
             )}`
           );
           const response = await axios.post(
-            `http://localhost:5000/api/dataset/${selectedDataset}/upload`,
+            `/api/dataset/${selectedDataset}/upload`,
             batchFormData,
             {
               headers: {
                 "Content-Type": "multipart/form-data",
-                Authorization: `Bearer ${token}`,
               },
               timeout: 60000,
             }

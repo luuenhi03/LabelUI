@@ -11,6 +11,22 @@ const ImageSchema = new mongoose.Schema(
     labeledBy: String,
     labeledAt: Date,
     boundingBox: Object,
+    isCropped: {
+      type: Boolean,
+      default: false,
+    },
+    coordinates: {
+      type: Object,
+      default: null,
+    },
+    originalImageId: {
+      type: String,
+      default: null,
+    },
+    originalImageName: {
+      type: String,
+      default: null,
+    },
     labels: [
       {
         label: { type: String, required: true },

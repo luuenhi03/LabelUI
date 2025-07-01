@@ -13,6 +13,15 @@ from torchvision import transforms
 from PIL import Image
 import numpy as np
 import os
+import logging
+import traceback
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Import model classes (copy from your training script)
 class ColorAwareConv(nn.Module):
@@ -277,129 +286,112 @@ class ColorMobileViTv3(nn.Module):
 
 class ColorClassifier:
     def __init__(self, model_path='best_color_model.pth', variant='XXS'):
-        """
-        Initialize the color classifier
-        
-        Args:
-            model_path: Path to the trained model file
-            variant: Model variant ('XXS', 'XS', 'S')
-        """
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.variant = variant
-        
-        # Define class names (adjust based on your dataset)
-        self.class_names = ['black', 'grey', 'red', 'white']
-        
-        # Data transforms for inference
-        self.transform = transforms.Compose([
-            transforms.Resize((128, 128)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        
-        # Load model
-        self.model = self._load_model(model_path)
-        
-    def _load_model(self, model_path):
-        """Load the trained model"""
         try:
-            # Create model
-            model = ColorMobileViTv3(
-                num_classes=len(self.class_names), 
-                variant=self.variant
-            )
+            logger.info(f"Initializing ColorClassifier with variant {variant}")
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            logger.info(f"Using device: {self.device}")
             
-            # Load weights
+            self.model = ColorMobileViTv3(variant=variant)
+            self._load_model(model_path)
+            
+            self.transform = transforms.Compose([
+                transforms.Resize((128, 128)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                  std=[0.229, 0.224, 0.225])
+            ])
+            
+            self.idx_to_class = {
+                0: 'black',
+                1: 'blue',
+                2: 'red',
+                3: 'white'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error initializing ColorClassifier: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+
+    def _load_model(self, model_path):
+        try:
             if not os.path.exists(model_path):
                 raise FileNotFoundError(f"Model file not found: {model_path}")
                 
-            state_dict = torch.load(model_path, map_location=self.device)
-            model.load_state_dict(state_dict)
+            logger.info(f"Loading model from {model_path}")
+            checkpoint = torch.load(model_path, map_location=self.device)
             
-            # Set to evaluation mode
-            model.eval()
-            model.to(self.device)
-            
-            return model
+            # Handle both formats: direct state dict or checkpoint format
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                state_dict = checkpoint['model_state_dict']
+            else:
+                state_dict = checkpoint  # Assume it's a direct state dict
+                
+            self.model.load_state_dict(state_dict)
+            self.model = self.model.to(self.device)
+            self.model.eval()
+            logger.info("Model loaded successfully")
             
         except Exception as e:
-            raise RuntimeError(f"Failed to load model: {str(e)}")
-    
+            logger.error(f"Error loading model: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+
     def predict(self, image_path):
-        """
-        Predict the class of an image
-        
-        Args:
-            image_path: Path to the image file
-            
-        Returns:
-            dict: Prediction results with class, confidence, and probabilities
-        """
         try:
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+                
+            logger.info(f"Processing image: {image_path}")
+            
             # Load and preprocess image
             image = Image.open(image_path).convert('RGB')
-            input_tensor = self.transform(image).unsqueeze(0).to(self.device)
+            image_tensor = self.transform(image).unsqueeze(0)
+            image_tensor = image_tensor.to(self.device)
             
             # Make prediction
             with torch.no_grad():
-                outputs = self.model(input_tensor)
+                outputs = self.model(image_tensor)
                 probabilities = F.softmax(outputs, dim=1)
-                confidence, predicted = torch.max(probabilities, 1)
+                predicted_idx = torch.argmax(probabilities, dim=1).item()
+                confidence = probabilities[0][predicted_idx].item()
                 
-                predicted_class = self.class_names[predicted.item()]
-                confidence_score = confidence.item()
-                
-                # Get all class probabilities
-                class_probabilities = {}
-                for i, class_name in enumerate(self.class_names):
-                    class_probabilities[class_name] = float(probabilities[0][i])
+            predicted_class = self.idx_to_class[predicted_idx]
             
-            return {
+            result = {
                 'predicted_class': predicted_class,
-                'confidence': confidence_score,
-                'probabilities': class_probabilities
+                'confidence': confidence
             }
+            
+            logger.info(f"Prediction result: {result}")
+            return result
             
         except Exception as e:
-            raise RuntimeError(f"Prediction failed: {str(e)}")
+            logger.error(f"Error during prediction: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
 
 def main():
-    """Main function for command line usage"""
-    if len(sys.argv) != 2:
-        print(json.dumps({
-            'error': 'Usage: python inference.py <image_path>',
-            'success': False
-        }))
-        sys.exit(1)
-    
-    image_path = sys.argv[1]
-    
     try:
-        # Initialize classifier
-        classifier = ColorClassifier()
+        if len(sys.argv) != 2:
+            raise ValueError("Usage: python inference.py <image_path>")
+            
+        image_path = sys.argv[1]
+        logger.info(f"Starting prediction for {image_path}")
         
-        # Make prediction
+        classifier = ColorClassifier()
         result = classifier.predict(image_path)
         
-        # Output result as JSON
-        output = {
-            'success': True,
-            'prediction': result,
-            'model_info': {
-                'variant': classifier.variant,
-                'classes': classifier.class_names,
-                'device': str(classifier.device)
-            }
-        }
-        
-        print(json.dumps(output, indent=2))
+        # Output JSON result
+        print(json.dumps(result))
+        sys.exit(0)
         
     except Exception as e:
-        error_output = {
-            'success': False,
-            'error': str(e)
+        error_msg = {
+            'error': str(e),
+            'traceback': traceback.format_exc()
         }
-        print(json.dumps(error_output, indent=2))
+        print(json.dumps(error_msg), file=sys.stderr)
         sys.exit(1)
 
 if __name__ == '__main__':

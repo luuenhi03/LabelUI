@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "prestart": "npx kill-port 5000",
     "start": "concurrently \"cd server && npm start\" \"cd client && npm start\"",
     "install-all": "npm install && cd client && npm install && cd ../server && npm install"
   },

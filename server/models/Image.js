@@ -9,9 +9,17 @@ const imageSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  fileId: {
+    type: String,
+    required: false,
+  },
   path: {
     type: String,
-    required: true,
+    required: false,
+  },
+  url: {
+    type: String,
+    required: false,
   },
   dataset: {
     type: mongoose.Schema.Types.ObjectId,
@@ -43,6 +51,18 @@ const imageSchema = new mongoose.Schema({
       x: Number,
       y: Number,
     },
+  },
+  isCropped: {
+    type: Boolean,
+    default: false,
+  },
+  originalImageId: {
+    type: String,
+    default: null,
+  },
+  originalImageName: {
+    type: String,
+    default: null,
   },
   metadata: {
     type: Map,

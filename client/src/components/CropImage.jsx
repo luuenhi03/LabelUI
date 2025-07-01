@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
-import axios from "axios";
+import axios from "../utils/axios";
 import "./CropImage.scss";
 
 const CropImage = ({
@@ -45,10 +45,32 @@ const CropImage = ({
     const cropper = cropperRef.current?.cropper;
     if (cropper) {
       try {
-        const croppedDataUrl = cropper
-          .getCroppedCanvas()
-          .toDataURL("image/jpeg", 0.9);
-        const coordinates = cropper.getData();
+        const canvas = cropper.getCroppedCanvas({
+          maxWidth: 4096,
+          maxHeight: 4096,
+          fillColor: "#fff",
+          imageSmoothingEnabled: true,
+          imageSmoothingQuality: "high",
+        });
+
+        if (!canvas) {
+          throw new Error("Failed to crop image. Please try again.");
+        }
+
+        const croppedDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        const coordinates = cropper.getData(true); // true for rounded values
+
+        // Validate coordinates
+        if (
+          !coordinates ||
+          typeof coordinates.x !== "number" ||
+          typeof coordinates.y !== "number" ||
+          typeof coordinates.width !== "number" ||
+          typeof coordinates.height !== "number"
+        ) {
+          throw new Error("Invalid crop coordinates. Please try again.");
+        }
+
         setCroppedImages((prev) => [
           ...prev,
           {
@@ -65,7 +87,10 @@ const CropImage = ({
         setFileName("");
       } catch (error) {
         console.error("Error during cropping:", error);
-        alert("An error occurred while cropping the image. Please try again.");
+        alert(
+          error.message ||
+            "An error occurred while cropping the image. Please try again."
+        );
       }
     }
   };
@@ -76,117 +101,126 @@ const CropImage = ({
 
   const handleUploadAll = async () => {
     if (croppedImages.length === 0) {
-      alert("There are no images to upload.");
+      alert("Please crop at least one image before uploading.");
       return;
     }
 
     if (!selectedDataset) {
-      alert("Dataset ID not found. Please try again.");
+      alert("Please select a dataset first.");
       return;
     }
 
     setIsUploading(true);
-    const uploadedDataArray = [];
 
     try {
+      // Validate file names
+      const invalidFileNames = croppedImages.filter((img) => {
+        const fileName = img.fileName.trim();
+        return !fileName || /[<>:"/\\|?*]/.test(fileName);
+      });
+
+      if (invalidFileNames.length > 0) {
+        throw new Error(
+          'Invalid characters in file names. Please avoid: < > : " / \\ | ? *'
+        );
+      }
+
       const formData = new FormData();
-      croppedImages.forEach((img) => {
-        const file = dataURLtoFile(img.dataUrl, `${img.fileName}.jpg`);
+      croppedImages.forEach((img, index) => {
+        const sanitizedFileName = img.fileName.trim();
+        const file = dataURLtoFile(img.dataUrl, `${sanitizedFileName}.jpg`);
+        if (!file) {
+          throw new Error(
+            `Failed to convert image "${sanitizedFileName}" to file`
+          );
+        }
         formData.append("images", file);
-        formData.append("label[]", img.fileName);
-        formData.append("coordinates[]", JSON.stringify(img.coordinates));
-        formData.append("labeledBy[]", "user");
-        formData.append("labeledAt[]", new Date().toISOString());
-        formData.append("isCropped[]", "true");
+        formData.append(`labels[${index}]`, sanitizedFileName);
+        formData.append(
+          `coordinates[${index}]`,
+          JSON.stringify(img.coordinates)
+        );
+        formData.append(`labeledBy[${index}]`, "user");
+        formData.append(`labeledAt[${index}]`, new Date().toISOString());
+        formData.append(`isCropped[${index}]`, "true");
 
         if (selectedImage) {
-          formData.append("originalImageId[]", selectedImage._id);
-          formData.append("originalImageName[]", selectedImage.filename);
+          formData.append(`originalImageIds[${index}]`, selectedImage._id);
+          formData.append(
+            `originalImageNames[${index}]`,
+            selectedImage.filename
+          );
         }
       });
-      formData.append("dataset", selectedDataset);
 
-      try {
-        const response = await axios.post(
-          `http://localhost:5000/api/dataset/${selectedDataset}/upload`,
-          formData,
-          {
-            headers: { "Content-Type": "multipart/form-data" },
-            timeout: 30000,
-          }
-        );
-        console.log("Upload response:", response.data);
-        uploadedDataArray.push(response.data);
-      } catch (uploadError) {
-        console.error("Upload error for image:", croppedImages[0].fileName, {
-          error: uploadError.message,
-          response: uploadError.response?.data,
-          status: uploadError.response?.status,
-          config: {
-            url: uploadError.config?.url,
-            method: uploadError.config?.method,
-            headers: uploadError.config?.headers,
+      const response = await axios.post(
+        `/api/dataset/${selectedDataset}/upload`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
           },
-        });
-
-        if (uploadError.response?.data?.message) {
-          alert(`Upload error: ${uploadError.response.data.message}`);
-        } else if (uploadError.code === "ECONNABORTED") {
-          alert("Error: Server is not responding. Please try again later.");
-        } else {
-          alert(
-            "An error occurred while uploading the image. Please check the console for more details."
-          );
+          timeout: 60000, // 60 seconds timeout
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            console.log(`Upload progress: ${percentCompleted}%`);
+          },
         }
-        throw uploadError;
-      }
+      );
 
-      if (selectedImage) {
-        try {
-          await axios.delete(
-            `http://localhost:5000/api/dataset/${selectedDataset}/image/${selectedImage._id}`
-          );
-          console.log("Original image deleted:", selectedImage.name);
-        } catch (error) {
-          console.error("Error deleting original image:", error);
-        }
-      }
+      console.log("Upload response:", response.data);
 
-      setCroppedImages([]);
-      if (onUploadComplete) {
-        const uploadedImages = uploadedDataArray.map((response) => {
-          const imageData = Array.isArray(response) ? response[0] : response;
-          return {
-            _id: imageData.fileId || imageData._id,
+      if (response.data.images) {
+        // Cập nhật UI
+        setCroppedImages([]);
+        if (onUploadComplete) {
+          const uploadedImages = response.data.images.map((imageData) => ({
+            _id: imageData._id,
             url: imageData.url,
             filename: imageData.filename,
             label: imageData.label,
             labeledBy: imageData.labeledBy,
             labeledAt: imageData.labeledAt,
             coordinates: imageData.coordinates,
-            boundingBox: imageData.boundingBox,
             isCropped: true,
             originalImageId: imageData.originalImageId,
             originalImageName: imageData.originalImageName,
-          };
-        });
-        onUploadComplete(uploadedImages);
-      }
+          }));
+          onUploadComplete(uploadedImages);
+        }
 
-      const updatedImageList = imageList.filter(
-        (img) => img._id !== selectedImage._id
-      );
-      setImageList(updatedImageList);
+        // Xóa ảnh gốc nếu cần
+        if (selectedImage) {
+          try {
+            await axios.delete(
+              `/api/dataset/${selectedDataset}/images/${selectedImage._id}`
+            );
+            console.log("Original image deleted:", selectedImage.filename);
 
-      if (updatedImageList.length > 0) {
-        setSelectedImage(updatedImageList[0]);
-        setImageUrl(`http://localhost:5000/${updatedImageList[0].url}`);
+            // Cập nhật danh sách ảnh
+            const updatedImageList = imageList.filter(
+              (img) => img._id !== selectedImage._id
+            );
+            setImageList(updatedImageList);
+
+            if (updatedImageList.length > 0) {
+              setSelectedImage(updatedImageList[0]);
+              setImageUrl(updatedImageList[0].url);
+            } else {
+              setSelectedImage(null);
+              setImageUrl("");
+            }
+          } catch (error) {
+            console.error("Error deleting original image:", error);
+          }
+        }
+
+        onExit();
       } else {
-        setSelectedImage(null);
-        setImageUrl("");
+        throw new Error("No images data in response");
       }
-
-      onExit();
     } catch (error) {
       console.error("Error during upload:", error);
       console.error("Error details:", {
@@ -194,7 +228,11 @@ const CropImage = ({
         response: error.response?.data,
         status: error.response?.status,
       });
-      alert("An error occurred while uploading the image. Please try again.");
+      alert(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to upload images. Please try again."
+      );
     } finally {
       setIsUploading(false);
     }

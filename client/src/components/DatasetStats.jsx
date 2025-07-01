@@ -3,6 +3,8 @@ import axios from "../utils/axios";
 import { useParams, useNavigate } from "react-router-dom";
 import "./DatasetStats.scss";
 
+const ITEMS_PER_PAGE = 20;
+
 const DatasetStats = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -18,6 +20,9 @@ const DatasetStats = () => {
   const [unlabeledImagesList, setUnlabeledImagesList] = useState([]);
   const [showLabeledList, setShowLabeledList] = useState(false);
   const [labeledImagesList, setLabeledImagesList] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [consistentPage, setConsistentPage] = useState(1);
+  const [inconsistentPage, setInconsistentPage] = useState(1);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -39,30 +44,54 @@ const DatasetStats = () => {
         const ds = res.data;
         setDataset(ds);
 
-        // Lấy danh sách ảnh chưa gán nhãn
-        const unlabeledRes = await axios.get(
-          `/api/dataset/${id}/images?type=unlabeled`
-        );
-        setUnlabeledImagesList(unlabeledRes.data);
-        setUnlabeled(unlabeledRes.data.length);
+        console.log("All images:", ds.images);
 
-        // Lấy danh sách ảnh đã gán nhãn
-        const labeledRes = await axios.get(
-          `/api/dataset/${id}/images?type=labeled`
-        );
-        setLabeledImagesList(labeledRes.data);
-        setLabeled(labeledRes.data.length);
+        const totalImages = ds.images ? ds.images.length : 0;
+        console.log("Total images:", totalImages);
 
-        // Lấy tổng số ảnh
-        const totalRes = await axios.get(`/api/dataset/${id}/images?type=all`);
-        setTotal(totalRes.data.length);
+        const labeledImages = ds.images
+          ? ds.images.filter((img) => {
+              const isLabeled =
+                (img.label && img.label.trim() !== "") ||
+                img.isCropped ||
+                (img.labels && img.labels.length > 0);
+              console.log(
+                "Image check:",
+                img.filename,
+                "Label:",
+                img.label,
+                "IsCropped:",
+                img.isCropped,
+                "Labels array:",
+                img.labels,
+                "IsLabeled:",
+                isLabeled
+              );
+              return isLabeled;
+            }).length
+          : 0;
+        console.log("Labeled images count:", labeledImages);
+        setTotal(totalImages);
+        setLabeled(labeledImages);
+        setUnlabeled(totalImages - labeledImages);
 
-        // Xử lý thống kê nhãn
+        const unlabeledImagesArr = ds.images
+          ? ds.images.filter(
+              (img) => (!img.label || img.label.trim() === "") && !img.isCropped
+            )
+          : [];
+        setUnlabeledImagesList(unlabeledImagesArr);
+
         const consistent = [];
         const inconsistent = [];
 
-        labeledRes.data.forEach((img) => {
-          if (!img.labels || img.labels.length === 0) return;
+        ds.images.forEach((img) => {
+          if ((!img.label || img.label.trim() === "") && !img.isCropped) return;
+
+          if (!img.labels || img.labels.length === 0) {
+            consistent.push(img);
+            return;
+          }
 
           const latestLabels = {};
           img.labels.forEach((label) => {
@@ -90,6 +119,18 @@ const DatasetStats = () => {
 
         setConsistentImages(consistent);
         setInconsistentImages(inconsistent);
+
+        const labeledImagesArr = ds.images
+          ? ds.images.filter((img) => {
+              const isLabeled =
+                (img.label && img.label.trim() !== "") ||
+                img.isCropped ||
+                (img.labels && img.labels.length > 0);
+              return isLabeled;
+            })
+          : [];
+        console.log("Final labeled images array:", labeledImagesArr);
+        setLabeledImagesList(labeledImagesArr);
       } catch (err) {
         console.error("Error fetching dataset stats:", err);
         console.error("Error details:", {
@@ -110,6 +151,62 @@ const DatasetStats = () => {
 
   const handleImageClick = (imageId) => {
     navigate(`/label?dataset=${id}&image=${imageId}`);
+  };
+
+  const getPaginatedData = (data) => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return data.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  };
+
+  const totalPages = Math.ceil(consistentImages.length / ITEMS_PER_PAGE);
+
+  const handleDeleteImage = async (imageId) => {
+    try {
+      const storedUser = JSON.parse(localStorage.getItem("user"));
+      const token = localStorage.getItem("token");
+
+      if (!storedUser || !storedUser.id || !token) {
+        setError("Vui lòng đăng nhập để xóa ảnh");
+        return;
+      }
+
+      await axios.delete(`/api/dataset/${id}/images/${imageId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Cập nhật lại danh sách ảnh sau khi xóa
+      const updatedLabeledImages = labeledImagesList.filter(
+        (img) => img._id !== imageId
+      );
+      const updatedConsistentImages = consistentImages.filter(
+        (img) => img._id !== imageId
+      );
+      const updatedInconsistentImages = inconsistentImages.filter(
+        (img) => img._id !== imageId
+      );
+
+      setLabeledImagesList(updatedLabeledImages);
+      setConsistentImages(updatedConsistentImages);
+      setInconsistentImages(updatedInconsistentImages);
+      setLabeled((prev) => prev - 1);
+      setTotal((prev) => prev - 1);
+
+      // Hiển thị thông báo thành công
+      alert("Đã xóa ảnh thành công");
+    } catch (err) {
+      console.error("Lỗi khi xóa ảnh:", err);
+      alert(
+        err.response?.data?.message ||
+          "Không thể xóa ảnh. Vui lòng thử lại sau."
+      );
+    }
+  };
+
+  const getPageData = (data, page) => {
+    const startIndex = (page - 1) * 5;
+    return data.slice(startIndex, startIndex + 5);
   };
 
   if (loading) return <div className="dataset-stats-loading">Loading...</div>;
@@ -158,7 +255,7 @@ const DatasetStats = () => {
       </div>
       <div className="stats-box-row">
         <div
-          className="stats-box small"
+          className="stats-box"
           onClick={() => setShowUnlabeledList(true)}
           style={{ cursor: "pointer" }}
         >
@@ -166,7 +263,7 @@ const DatasetStats = () => {
           <div className="stats-value">{unlabeled}</div>
         </div>
         <div
-          className="stats-box small"
+          className="stats-box"
           onClick={() => setShowLabeledList(true)}
           style={{ cursor: "pointer" }}
         >
@@ -202,7 +299,38 @@ const DatasetStats = () => {
               overflowY: "auto",
             }}
           >
-            <h3>Unlabeled Images ({unlabeledImagesList.length})</h3>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+                position: "sticky",
+                top: 0,
+                backgroundColor: "white",
+                padding: "10px 0",
+                zIndex: 1,
+              }}
+            >
+              <h2>Unlabeled Images ({unlabeledImagesList.length})</h2>
+              <button
+                onClick={() => setShowUnlabeledList(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f44336",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  "&:hover": {
+                    backgroundColor: "#d32f2f",
+                  },
+                }}
+              >
+                Close
+              </button>
+            </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {unlabeledImagesList.map((img) => (
                 <li
@@ -222,26 +350,6 @@ const DatasetStats = () => {
                 </li>
               ))}
             </ul>
-            <button
-              style={{
-                marginTop: 16,
-                padding: "8px 24px",
-                background: "#007bff",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                fontWeight: "bold",
-                fontSize: "16px",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                transition: "background 0.2s",
-              }}
-              onMouseOver={(e) => (e.target.style.background = "#0056b3")}
-              onMouseOut={(e) => (e.target.style.background = "#007bff")}
-              onClick={() => setShowUnlabeledList(false)}
-            >
-              Close
-            </button>
           </div>
         </div>
       )}
@@ -268,95 +376,358 @@ const DatasetStats = () => {
               background: "#fff",
               padding: 24,
               borderRadius: 8,
-              minWidth: 320,
+              minWidth: 600,
               maxHeight: "80vh",
               overflowY: "auto",
             }}
           >
-            <h3>Labeled Images ({labeledImagesList.length})</h3>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+                position: "sticky",
+                top: 0,
+                backgroundColor: "white",
+                padding: "10px 0",
+                zIndex: 1,
+              }}
+            >
+              <h2>Labeled Images ({labeledImagesList.length})</h2>
+              <button
+                onClick={() => setShowLabeledList(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f44336",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  "&:hover": {
+                    backgroundColor: "#d32f2f",
+                  },
+                }}
+              >
+                Close
+              </button>
+            </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {labeledImagesList.map((img) => (
                 <li
                   key={img._id}
                   style={{
                     cursor: "pointer",
+                    fontSize: 16,
                     color: "#007bff",
-                    padding: "6px 0",
+                    padding: "12px 0",
                     borderBottom: "1px solid #eee",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
                   }}
                   onClick={() => {
                     handleImageClick(img._id);
                     setShowLabeledList(false);
                   }}
                 >
-                  {img.filename}
+                  <span>{img.filename}</span>
+                  <span style={{ color: "#666", marginLeft: 12 }}>
+                    {img.label
+                      ? `Label: ${img.label}`
+                      : img.labels && img.labels.length > 0
+                      ? `Latest Label: ${
+                          img.labels[img.labels.length - 1].label
+                        }`
+                      : ""}
+                    {img.isCropped && (
+                      <span style={{ color: "#4CAF50", marginLeft: 8 }}>
+                        (Cropped)
+                      </span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
-            <button
-              style={{
-                marginTop: 16,
-                padding: "8px 24px",
-                background: "#007bff",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                fontWeight: "bold",
-                fontSize: "16px",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                transition: "background 0.2s",
-              }}
-              onMouseOver={(e) => (e.target.style.background = "#0056b3")}
-              onMouseOut={(e) => (e.target.style.background = "#007bff")}
-              onClick={() => setShowLabeledList(false)}
-            >
-              Close
-            </button>
           </div>
         </div>
       )}
 
       {/* Consistent Images Section */}
-      <div className="image-group-section">
-        <h2>100% Consistent Images ({consistentImages.length})</h2>
-        <div className="image-list">
-          {consistentImages.map((img) => (
+      <div className="image-group-section" style={{ marginBottom: "40px" }}>
+        <h2 className="section-title" style={{ marginBottom: "20px" }}>
+          100% Consistent Images ({consistentImages.length})
+        </h2>
+        <div className="image-list" style={{ marginBottom: "20px" }}>
+          {getPageData(consistentImages, consistentPage).map((img, index) => (
             <div
               key={img._id}
-              className="image-list-item"
-              onClick={() => handleImageClick(img._id)}
+              className="image-item"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                marginBottom: "10px",
+              }}
             >
-              <div className="image-info">
-                <span className="image-filename">{img.filename}</span>
-                <span className="image-label">{img.label}</span>
+              <div
+                onClick={() => handleImageClick(img._id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  flex: 1,
+                }}
+              >
+                <span className="image-number" style={{ marginRight: "10px" }}>
+                  {(consistentPage - 1) * 5 + index + 1}.
+                </span>
+                <span
+                  className="image-name"
+                  style={{
+                    color: "#2196F3",
+                    textDecoration: "none",
+                    "&:hover": {
+                      textDecoration: "underline",
+                    },
+                  }}
+                >
+                  {img.filename.substring(0, 8)}...{img.filename.slice(-12)}
+                </span>
+                <span
+                  style={{
+                    marginLeft: "20px",
+                    color: "#666",
+                    backgroundColor: "#f5f5f5",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                  }}
+                >
+                  Labeled: {img.label}
+                  {img.isCropped && (
+                    <span style={{ color: "#4CAF50", marginLeft: 8 }}>
+                      (Cropped)
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
           ))}
         </div>
+        {consistentImages.length > 5 && (
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <button
+              onClick={() => setConsistentPage((prev) => Math.max(1, prev - 1))}
+              disabled={consistentPage === 1}
+              style={{
+                padding: "8px 16px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                background: consistentPage === 1 ? "#f5f5f5" : "#fff",
+                cursor: consistentPage === 1 ? "not-allowed" : "pointer",
+              }}
+            >
+              ←
+            </button>
+            <span>
+              {consistentPage} / {Math.ceil(consistentImages.length / 5)}
+            </span>
+            <button
+              onClick={() =>
+                setConsistentPage((prev) =>
+                  Math.min(Math.ceil(consistentImages.length / 5), prev + 1)
+                )
+              }
+              disabled={
+                consistentPage >= Math.ceil(consistentImages.length / 5)
+              }
+              style={{
+                padding: "8px 16px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                background:
+                  consistentPage >= Math.ceil(consistentImages.length / 5)
+                    ? "#f5f5f5"
+                    : "#fff",
+                cursor:
+                  consistentPage >= Math.ceil(consistentImages.length / 5)
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              →
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Inconsistent Images Section */}
       <div className="image-group-section">
-        <h2>Inconsistent Labeled Images ({inconsistentImages.length})</h2>
-        <div className="image-list">
-          {inconsistentImages.map((img) => (
-            <div
-              key={img._id}
-              className="image-list-item"
-              onClick={() => handleImageClick(img._id)}
-            >
-              <div className="image-info">
-                <span className="image-filename">{img.filename}</span>
-                <div className="image-labels">
-                  {Array.from(
-                    new Set(Object.values(img.latestLabels).map((l) => l.label))
-                  ).join(", ")}
+        <h2 className="section-title" style={{ marginBottom: "20px" }}>
+          Inconsistent Labeled Images ({inconsistentImages.length})
+        </h2>
+        <div className="image-list" style={{ marginBottom: "20px" }}>
+          {getPageData(inconsistentImages, inconsistentPage).map(
+            (img, index) => (
+              <div
+                key={img._id}
+                className="image-item"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  marginBottom: "10px",
+                }}
+              >
+                <div
+                  onClick={() => handleImageClick(img._id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    flex: 1,
+                  }}
+                >
+                  <span
+                    className="image-number"
+                    style={{ marginRight: "10px" }}
+                  >
+                    {(inconsistentPage - 1) * 5 + index + 1}.
+                  </span>
+                  <span
+                    className="image-name"
+                    style={{
+                      color: "#2196F3",
+                      textDecoration: "none",
+                      "&:hover": {
+                        textDecoration: "underline",
+                      },
+                    }}
+                  >
+                    {img.filename.substring(0, 8)}...{img.filename.slice(-12)}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: "20px",
+                      color: "#666",
+                      backgroundColor: "#f5f5f5",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    Labeled: {img.label}
+                    {img.isCropped && (
+                      <span style={{ color: "#4CAF50", marginLeft: 8 }}>
+                        (Cropped)
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          )}
         </div>
+        {inconsistentImages.length > 5 && (
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <button
+              onClick={() =>
+                setInconsistentPage((prev) => Math.max(1, prev - 1))
+              }
+              disabled={inconsistentPage === 1}
+              style={{
+                padding: "8px 16px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                background: inconsistentPage === 1 ? "#f5f5f5" : "#fff",
+                cursor: inconsistentPage === 1 ? "not-allowed" : "pointer",
+              }}
+            >
+              ←
+            </button>
+            <span>
+              {inconsistentPage} / {Math.ceil(inconsistentImages.length / 5)}
+            </span>
+            <button
+              onClick={() =>
+                setInconsistentPage((prev) =>
+                  Math.min(Math.ceil(inconsistentImages.length / 5), prev + 1)
+                )
+              }
+              disabled={
+                inconsistentPage >= Math.ceil(inconsistentImages.length / 5)
+              }
+              style={{
+                padding: "8px 16px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                background:
+                  inconsistentPage >= Math.ceil(inconsistentImages.length / 5)
+                    ? "#f5f5f5"
+                    : "#fff",
+                cursor:
+                  inconsistentPage >= Math.ceil(inconsistentImages.length / 5)
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              →
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "10px",
+          marginTop: "20px",
+        }}
+      >
+        <button
+          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          style={{
+            padding: "8px 16px",
+            border: "1px solid #ddd",
+            borderRadius: "4px",
+            background: currentPage === 1 ? "#f5f5f5" : "#fff",
+            cursor: currentPage === 1 ? "not-allowed" : "pointer",
+          }}
+        >
+          ←
+        </button>
+        <span>
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          style={{
+            padding: "8px 16px",
+            border: "1px solid #ddd",
+            borderRadius: "4px",
+            background: currentPage === totalPages ? "#f5f5f5" : "#fff",
+            cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+          }}
+        >
+          →
+        </button>
       </div>
     </div>
   );

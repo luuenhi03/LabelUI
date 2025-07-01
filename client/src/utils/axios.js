@@ -1,7 +1,12 @@
 import axios from "axios";
 
+const API_URL =
+  process.env.NODE_ENV === "production"
+    ? process.env.REACT_APP_API_URL
+    : "http://localhost:5000";
+
 const instance = axios.create({
-  baseURL: "http://localhost:5000",
+  baseURL: API_URL,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
@@ -12,8 +17,10 @@ const instance = axios.create({
 instance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
+    console.log("Token:", token);
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers["Authorization"] = `Bearer ${token}`;
+      console.log("Authorization header:", config.headers["Authorization"]);
     }
     return config;
   },
@@ -24,21 +31,40 @@ instance.interceptors.request.use(
 
 instance.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      // Xóa token cũ
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      // Chuyển hướng về trang đăng nhập
+      const currentPath = window.location.pathname;
+      if (!currentPath.includes("/login") && !currentPath.includes("/signup")) {
+        window.location.href = "/login";
+      }
+
+      return Promise.reject(error);
+    }
+
     if (error.response) {
-      // Server trả về response với status code nằm ngoài 2xx
-      return Promise.reject(error.response.data);
+      if (error.response.data) {
+        return Promise.reject(error.response.data);
+      }
     } else if (error.request) {
-      // Request được gửi nhưng không nhận được response
       return Promise.reject({
-        message: "Unable to connect to server. Please check your connection!",
-      });
-    } else {
-      // Có lỗi khi setting up request
-      return Promise.reject({
-        message: "An error occurred. Please try again!",
+        message: "Không thể kết nối đến server",
+        silent: true,
       });
     }
+
+    return Promise.reject({
+      message: "Đã có lỗi xảy ra",
+      silent: true,
+    });
   }
 );
 
